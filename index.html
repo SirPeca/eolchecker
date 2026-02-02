@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Checker EOL & CVE</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 2rem; }
+    label { display:block; margin-top:.5rem; }
+    input, select { width: 300px; padding:.45rem; }
+    button { margin-top:.8rem; padding:.5rem 1rem; }
+    .muted { color:#555; }
+    .ok { color:#0a7; font-weight:bold; }
+    .warn { color:#e69500; font-weight:bold; }
+    .bad { color:#c00; font-weight:bold; }
+    ul { list-style: disc; padding-left: 1.2rem; }
+    .tag { display:inline-block; padding:.15rem .45rem; margin-right:.3rem; font-size:.85rem; border-radius:.35rem; }
+    .sev-CRITICAL { background:#c00; color:#fff; }
+    .sev-HIGH { background:#e67e22; color:#fff; }
+    .sev-MEDIUM { background:#f1c40f; color:#111; }
+    .sev-LOW { background:#2ecc71; color:#111; }
+    .sev-NA { background:#999; color:#fff; }
+    .panel { margin-top:1rem; padding:1rem 0; border-top:1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Checker de soporte y CVEs</h1>
+
+    <form id="form">
+      <label>Tecnología</label>
+      <input id="tec" placeholder="Angular" value="Angular" required />
+
+      <label>Versión</label>
+      <input id="ver" placeholder="16.2.0" value="16.2.0" required />
+
+      <label style="margin-top:1rem;">Filtrar CVEs por severidad</label>
+      <select id="sev">
+        <option value="">Todas</option>
+        <option value="HIGH">HIGH + CRITICAL</option>
+        <option value="CRITICAL">CRITICAL</option>
+      </select>
+
+      <button type="submit">Consultar</button>
+    </form>
+
+    <section id="out" class="panel"></section>
+  </main>
+
+  <script>
+    const out = document.getElementById('out');
+
+    const fmtDate = d => {
+      if (!d) return '-';
+      const t = new Date(d);
+      if (isNaN(t.getTime()) || t.getFullYear() < 1970) return '-';
+      return t.toLocaleDateString();
+    };
+
+    const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+
+    const sevTag = sev => {
+      const s = (sev || "NA").toUpperCase();
+      return `<span class="tag sev-${s}">${s}</span>`;
+    };
+
+    document.getElementById('form').addEventListener('submit', async ev => {
+      ev.preventDefault();
+      const tec = document.getElementById('tec').value.trim();
+      const ver = document.getElementById('ver').value.trim();
+      const sev = document.getElementById('sev').value;
+
+      out.innerHTML = '<em>Consultando...</em>';
+
+      try {
+        const url = `/api/check?tec=${encodeURIComponent(tec)}&ver=${encodeURIComponent(ver)}${sev ? `&sev=${encodeURIComponent(sev)}` : ''}`;
+        const res = await fetch(url);
+        const j = await res.json();
+
+        if (!res.ok) throw new Error(j?.detalle || j?.error || res.statusText);
+
+        // CVEs render section
+        const cvesHtml = (Array.isArray(j.cves) && j.cves.length)
+          ? `
+             <h4>CVEs encontrados (${j.cves.length})</h4>
+             <ul>
+               ${j.cves.map(c => `
+                 <li>
+                   ${sevTag(c.severity)}
+                   <a href="${c.url}" target="_blank" rel="noopener noreferrer">${c.id}</a>
+                   — score: ${c.score}
+                   — pub: ${fmtDate(c.published)}
+                 </li>
+               `).join('')}
+             </ul>
+            `
+          : `<p class="muted"><em>Sin CVEs relevantes para el criterio seleccionado.</em></p>`;
+
+        out.innerHTML = `
+          <h3>${j.veredicto || 'Sin veredicto'}</h3>
+          ${j.rationale ? `<p class="muted">${j.rationale}</p>` : ''}
+
+          <p><strong>Tecnología:</strong> ${cap(j.tecnologia)} |
+             <strong>Versión:</strong> ${j.version}</p>
+
+          ${j.ciclo ? `
+            <p>
+              <strong>Ciclo:</strong> ${j.ciclo.detectado || '-'} |
+              <strong>EOL:</strong> ${fmtDate(j.ciclo.eol)} |
+              <strong>Soporte:</strong> ${fmtDate(j.ciclo.support)} |
+              <strong>Latest:</strong> ${j.ciclo.latest || '-'}
+            </p>
+          ` : ''}
+
+          <p><strong>Recomendación:</strong> ${j.recomendacion || '-'}</p>
+
+          ${cvesHtml}
+
+          ${Array.isArray(j.fuentes) && j.fuentes.length ? `
+            <p>Fuentes:
+              ${j.fuentes.map((f,i)=> `<a href="${f}" target="_blank" rel="noopener noreferrer">[${i+1}]</a>`).join(' ')}
+            </p>
+          ` : ''}
+        `;
+      } catch (e) {
+        out.innerHTML = `<p style="color:#c00;"><strong>Error:</strong> ${e.message}</p>`;
+      }
+    });
+  </script>
+</body>
+</html>
