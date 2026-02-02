@@ -74,7 +74,7 @@
       out.innerHTML = '<em>Consultando...</em>';
 
       try {
-        const url = `/api/check?tec=${encodeURIComponent(tec)}&ver=${encodeURIComponent(ver)}${sev ? `&sev=${encodeURIComponent(sev)}` : ''}`;
+        const url = `/check?tec=${encodeURIComponent(tec)}&ver=${encodeURIComponent(ver)}${sev ? `&sev=${encodeURIComponent(sev)}` : ''}`;
         const res = await fetch(url);
         const j = await res.json();
 
