@@ -6,33 +6,48 @@
 <title>Checker EOL & CVEs</title>
 <link rel="stylesheet" href="/styles.css" />
 <style>
-  body {
-    font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    margin: 0; padding: 0; background:#f4f6f8; color:#1f2328;
-  }
-  main { max-width: 720px; margin: 3rem auto; padding: 2rem; background:#fff; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,0.08);}
-  h1 { font-size: 2rem; color:#0a84ff; margin-bottom:1rem; }
-  h3 { margin-top:1rem; color:#0a7; }
-  form label { display:block; margin-top:1rem; font-weight:600; }
-  input, select { width:100%; padding:0.6rem 0.8rem; margin-top:0.3rem; border:1px solid #d0d7de; border-radius:8px; }
-  button { margin-top:1rem; padding:0.7rem 1.5rem; background:#0a84ff; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; transition:0.2s; }
+  /* --- Reset básico --- */
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#f4f6f8; color:#1f2328; }
+  main { max-width: 800px; margin: 3rem auto; padding: 2rem; background:#fff; border-radius:12px; box-shadow:0 8px 20px rgba(0,0,0,0.08); }
+
+  h1 { font-size:2rem; color:#0a84ff; margin-bottom:1rem; text-align:center; }
+  h2,h3,h4 { margin-top:1rem; margin-bottom:.5rem; }
+  
+  form { display:flex; flex-direction:column; gap:.8rem; }
+  label { font-weight:600; }
+  input, select { width:100%; padding:.6rem .8rem; border:1px solid #d0d7de; border-radius:8px; }
+  button { padding:.7rem 1.5rem; background:#0a84ff; color:#fff; border:none; border-radius:8px; font-weight:600; cursor:pointer; transition:.2s; }
   button:hover { background:#006edc; }
-  .panel { margin-top:1.5rem; padding:1rem 1.2rem; border-radius:8px; background:#f9f9f9; box-shadow:0 2px 6px rgba(0,0,0,0.05);}
-  .tag { display:inline-block; padding:.25rem .5rem; margin-right:.3rem; border-radius:6px; font-size:.85rem; font-weight:600; color:#fff; }
+
+  .panel { margin-top:1.5rem; padding:1rem 1.2rem; border-radius:8px; background:#f9f9f9; box-shadow:0 2px 6px rgba(0,0,0,0.05); }
+  .muted { color:#555; font-style:italic; }
+
+  /* --- Tabla CVEs --- */
+  table { width:100%; border-collapse:collapse; margin-top:1rem; }
+  th, td { padding:.6rem .8rem; border:1px solid #d0d7de; text-align:left; }
+  th { background:#0a84ff; color:#fff; }
+  tr:nth-child(even) { background:#f4f6f8; }
+
+  .tag { display:inline-block; padding:.25rem .5rem; border-radius:6px; font-size:.85rem; font-weight:600; color:#fff; text-align:center; }
   .sev-CRITICAL { background:#c00; }
   .sev-HIGH { background:#e67e22; }
   .sev-MEDIUM { background:#f1c40f; color:#111; }
   .sev-LOW { background:#2ecc71; color:#111; }
   .sev-NA { background:#999; }
+
   a { color:#0a84ff; text-decoration:none; }
   a:hover { text-decoration:underline; }
-  .muted { color:#555; }
-  .bad { color:#c00; font-weight:bold; }
+
+  .verdict { font-size:1.1rem; font-weight:700; margin-top:.5rem; }
+  .verdict.OBSOLETA { color:#c00; }
+  .verdict["CON SOPORTE"] { color:#0a7; }
 </style>
 </head>
 <body>
 <main>
   <h1>Checker de soporte y CVEs</h1>
+
   <form id="form">
     <label>Tecnología</label>
     <input id="tec" placeholder="Angular" value="Angular" required />
@@ -46,8 +61,10 @@
     </select>
     <button type="submit">Consultar</button>
   </form>
+
   <section id="out" class="panel"></section>
 </main>
+
 <script>
 const out = document.getElementById('out');
 const fmtDate = d => d ? new Date(d).toLocaleDateString() : '-';
@@ -58,31 +75,57 @@ document.getElementById('form').addEventListener('submit', async ev => {
   ev.preventDefault();
   const tec = document.getElementById('tec').value.trim();
   const ver = document.getElementById('ver').value.trim();
-  const sev = document.getElementById('sev').value;
+  const sevFilter = document.getElementById('sev').value;
 
   out.innerHTML = '<em>Consultando...</em>';
 
   try {
-    const url = `/check?tec=${encodeURIComponent(tec)}&ver=${encodeURIComponent(ver)}${sev ? `&sev=${encodeURIComponent(sev)}` : ''}`;
+    const url = `/check?tec=${encodeURIComponent(tec)}&ver=${encodeURIComponent(ver)}`;
     const res = await fetch(url);
-    const j = await res.json();
-    if (!res.ok) throw new Error(j?.detalle || j?.error || res.statusText);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || res.statusText);
 
-    const cvesHtml = (Array.isArray(j.cves) && j.cves.length)
-      ? `<h4>CVEs encontrados (${j.cves.length})</h4><ul>` +
-        j.cves.map(c => `<li>${sevTag(c.severity)} <a href="${c.url}" target="_blank">${c.id}</a> — score: ${c.score} — pub: ${fmtDate(c.published)}</li>`).join('') +
-        `</ul>`
-      : `<p class="muted"><em>Sin CVEs relevantes para el criterio seleccionado.</em></p>`;
+    // Filtrar CVEs por severidad si se selecciona
+    let cves = data.cves || [];
+    if (sevFilter) {
+      cves = cves.filter(c => ['HIGH','CRITICAL'].includes(c.severity?.toUpperCase()));
+    }
 
-    out.innerHTML = `
-      <h3>${j.veredicto || 'Sin veredicto'}</h3>
-      <p><strong>Tecnología:</strong> ${cap(j.tecnologia)} | <strong>Versión:</strong> ${j.version}</p>
-      ${j.ciclo ? `<p><strong>Ciclo:</strong> ${j.ciclo.detectado||'-'} | <strong>EOL:</strong> ${fmtDate(j.ciclo.eol)} | <strong>Soporte:</strong> ${fmtDate(j.ciclo.support)} | <strong>Latest:</strong> ${j.ciclo.latest||'-'}</p>` : ''}
-      <p><strong>Fuentes:</strong> ${j.fuentes?.map((f,i)=> `<a href="${f}" target="_blank">[${i+1}]</a>`).join(' ')}</p>
-      ${cvesHtml}
+    // --- Construir HTML ---
+    let html = `
+      <div class="verdict ${data.veredicto}">${data.veredicto}</div>
+      <p><strong>Tecnología:</strong> ${cap(data.tecnologia)} | <strong>Versión:</strong> ${data.version}</p>
+      ${data.ciclo ? `<p><strong>Ciclo:</strong> ${data.ciclo.detectado||'-'} | <strong>EOL:</strong> ${fmtDate(data.ciclo.eol)} | <strong>Soporte:</strong> ${fmtDate(data.ciclo.support)} | <strong>Latest:</strong> ${data.ciclo.latest||'-'}</p>` : ''}
+      <p><strong>Fuentes:</strong> ${data.fuentes?.map((f,i)=> `<a href="${f}" target="_blank">[${i+1}]</a>`).join(' ')}</p>
     `;
-  } catch (e) {
-    out.innerHTML = `<p class="bad"><strong>Error:</strong> ${e.message}</p>`;
+
+    if (cves.length) {
+      html += `
+        <h4>CVEs encontrados (${cves.length})</h4>
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Severidad</th><th>Score</th><th>Publicado</th></tr>
+          </thead>
+          <tbody>
+            ${cves.map(c => `
+              <tr>
+                <td><a href="${c.url}" target="_blank">${c.id}</a></td>
+                <td>${sevTag(c.severity)}</td>
+                <td>${c.score}</td>
+                <td>${fmtDate(c.published)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } else {
+      html += `<p class="muted"><em>Sin CVEs relevantes para el criterio seleccionado.</em></p>`;
+    }
+
+    out.innerHTML = html;
+
+  } catch(e) {
+    out.innerHTML = `<p class="muted"><strong>Error:</strong> ${e.message}</p>`;
   }
 });
 </script>
