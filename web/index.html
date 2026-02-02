@@ -50,20 +50,9 @@
 
   <script>
     const out = document.getElementById('out');
-
-    const fmtDate = d => {
-      if (!d) return '-';
-      const t = new Date(d);
-      if (isNaN(t.getTime()) || t.getFullYear() < 1970) return '-';
-      return t.toLocaleDateString();
-    };
-
-    const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-
-    const sevTag = sev => {
-      const s = (sev || "NA").toUpperCase();
-      return `<span class="tag sev-${s}">${s}</span>`;
-    };
+    const fmtDate = d => d ? new Date(d).toLocaleDateString() : '-';
+    const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+    const sevTag = sev => `<span class="tag sev-${(sev||"NA").toUpperCase()}">${(sev||"NA").toUpperCase()}</span>`;
 
     document.getElementById('form').addEventListener('submit', async ev => {
       ev.preventDefault();
@@ -77,54 +66,31 @@
         const url = `/check?tec=${encodeURIComponent(tec)}&ver=${encodeURIComponent(ver)}${sev ? `&sev=${encodeURIComponent(sev)}` : ''}`;
         const res = await fetch(url);
         const j = await res.json();
-
         if (!res.ok) throw new Error(j?.detalle || j?.error || res.statusText);
 
-        // CVEs render section
+        // Render CVEs
         const cvesHtml = (Array.isArray(j.cves) && j.cves.length)
-          ? `
-             <h4>CVEs encontrados (${j.cves.length})</h4>
-             <ul>
-               ${j.cves.map(c => `
-                 <li>
-                   ${sevTag(c.severity)}
-                   <a href="${c.url}" target="_blank" rel="noopener noreferrer">${c.id}</a>
-                   — score: ${c.score}
-                   — pub: ${fmtDate(c.published)}
-                 </li>
-               `).join('')}
-             </ul>
-            `
+          ? `<h4>CVEs encontrados (${j.cves.length})</h4><ul>` +
+            j.cves.map(c => `
+              <li>
+                ${sevTag(c.severity)}
+                <a href="${c.url}" target="_blank" rel="noopener noreferrer">${c.id}</a>
+                — score: ${c.score}
+                — pub: ${fmtDate(c.published)}
+              </li>`).join('') +
+            `</ul>`
           : `<p class="muted"><em>Sin CVEs relevantes para el criterio seleccionado.</em></p>`;
 
         out.innerHTML = `
           <h3>${j.veredicto || 'Sin veredicto'}</h3>
-          ${j.rationale ? `<p class="muted">${j.rationale}</p>` : ''}
-
           <p><strong>Tecnología:</strong> ${cap(j.tecnologia)} |
              <strong>Versión:</strong> ${j.version}</p>
-
-          ${j.ciclo ? `
-            <p>
-              <strong>Ciclo:</strong> ${j.ciclo.detectado || '-'} |
-              <strong>EOL:</strong> ${fmtDate(j.ciclo.eol)} |
-              <strong>Soporte:</strong> ${fmtDate(j.ciclo.support)} |
-              <strong>Latest:</strong> ${j.ciclo.latest || '-'}
-            </p>
-          ` : ''}
-
-          <p><strong>Recomendación:</strong> ${j.recomendacion || '-'}</p>
-
+          ${j.ciclo ? `<p><strong>Ciclo:</strong> ${j.ciclo.detectado||'-'} | <strong>EOL:</strong> ${fmtDate(j.ciclo.eol)} | <strong>Soporte:</strong> ${fmtDate(j.ciclo.support)} | <strong>Latest:</strong> ${j.ciclo.latest||'-'}</p>` : ''}
+          <p><strong>Fuentes:</strong> ${j.fuentes?.map((f,i)=> `<a href="${f}" target="_blank">[${i+1}]</a>`).join(' ')}</p>
           ${cvesHtml}
-
-          ${Array.isArray(j.fuentes) && j.fuentes.length ? `
-            <p>Fuentes:
-              ${j.fuentes.map((f,i)=> `<a href="${f}" target="_blank" rel="noopener noreferrer">[${i+1}]</a>`).join(' ')}
-            </p>
-          ` : ''}
         `;
       } catch (e) {
-        out.innerHTML = `<p style="color:#c00;"><strong>Error:</strong> ${e.message}</p>`;
+        out.innerHTML = `<p class="bad"><strong>Error:</strong> ${e.message}</p>`;
       }
     });
   </script>
