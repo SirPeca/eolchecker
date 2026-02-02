@@ -1,6 +1,8 @@
 /**
- * Check EOL + CVEs
- * Sources: endoflife.date (EOL), MITRE CVE public feed (scraping ligero)
+ * Checker de soporte y CVEs
+ * - End-of-Life desde endoflife.date
+ * - CVEs reales desde NVD JSON feeds (public feed, no API key)
+ * - Devuelve todos los CVEs encontrados para la versión solicitada
  */
 
 export async function onRequest({ request }) {
@@ -8,7 +10,6 @@ export async function onRequest({ request }) {
     const url = new URL(request.url);
     const tec = url.searchParams.get("tec")?.trim();
     const ver = url.searchParams.get("ver")?.trim();
-    const sevFilter = url.searchParams.get("sev")?.toUpperCase();
 
     if (!tec || !ver) {
       return new Response(
@@ -17,49 +18,42 @@ export async function onRequest({ request }) {
       );
     }
 
-    // --- 1. End-of-Life check ---
-    const eolRes = await fetch(`https://endoflife.date/api/${encodeURIComponent(tec.toLowerCase())}.json`);
-    if (!eolRes.ok) {
-      return new Response(
-        JSON.stringify({ error: "Tecnología no encontrada en endoflife.date" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
+    // --- 1. End-of-Life ---
+    let cycle = null;
+    let verdict = "CON SOPORTE";
+    try {
+      const eolRes = await fetch(`https://endoflife.date/api/${encodeURIComponent(tec.toLowerCase())}.json`);
+      if (eolRes.ok) {
+        const cycles = await eolRes.json();
+        const majorVer = ver.split(".")[0];
+        cycle = cycles.find(c => String(c.cycle).startsWith(majorVer));
+        const eolDate = cycle?.eol ? new Date(cycle.eol) : null;
+        if (eolDate && eolDate < new Date()) verdict = "OBSOLETA";
+      }
+    } catch (e) {
+      console.log("EOL fetch error:", e.message);
     }
-    const cycles = await eolRes.json();
-    const majorVer = ver.split(".")[0];
-    const cycle = cycles.find(c => String(c.cycle).startsWith(majorVer));
-    const now = new Date();
-    const eolDate = cycle?.eol ? new Date(cycle.eol) : null;
-    const verdict = eolDate && eolDate < now ? "OBSOLETA" : "CON SOPORTE";
 
-    // --- 2. CVEs reales desde MITRE ---
+    // --- 2. CVEs desde NVD JSON feed ---
     let cves = [];
     try {
-      // MITRE CVE search query: https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=<tec>+<ver>
-      const searchUrl = `https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=${encodeURIComponent(tec)}+${encodeURIComponent(ver)}`;
-      const html = await fetch(searchUrl).then(r => r.text());
-
-      // Regex ligero para capturar los CVE IDs y links
-      const regex = /<a href="(\/cgi-bin\/CVEkey\.cgi\?keyword=CVE-\d+-\d+)">((CVE-\d+-\d+))<\/a>/g;
-      let match;
-      while ((match = regex.exec(html)) !== null) {
-        cves.push({
-          id: match[3],
-          url: `https://cve.mitre.org${match[1]}`,
-          severity: 'NA',   // MITRE no da score directo
-          score: '-',       // se puede integrar CVSS de NVD si se quiere
-          published: '-'
-        });
+      // Construimos la query simple: keyword=tec+ver
+      const nvdUrl = `https://services.nvd.nist.gov/rest/json/cves/2.0?keyword=${encodeURIComponent(tec)}+${encodeURIComponent(ver)}`;
+      const nvdRes = await fetch(nvdUrl);
+      if (nvdRes.ok) {
+        const data = await nvdRes.json();
+        if (data.vulnerabilities && Array.isArray(data.vulnerabilities)) {
+          cves = data.vulnerabilities.map(v => ({
+            id: v.cve.id,
+            url: `https://nvd.nist.gov/vuln/detail/${v.cve.id}`,
+            severity: v.cve.metrics?.cvssMetricV3?.[0]?.cvssData?.baseSeverity || 'NA',
+            score: v.cve.metrics?.cvssMetricV3?.[0]?.cvssData?.baseScore || '-',
+            published: v.cve.published
+          }));
+        }
       }
-
-      // Filtrar severidad si se indica HIGH/CRITICAL (solo placeholder, MITRE no tiene score en la página)
-      if (sevFilter) {
-        // En este ejemplo no filtramos porque no hay severidad en MITRE HTML
-        // Puedes integrar CVSS de NVD para filtrar si quieres
-      }
-
-    } catch(e) {
-      console.log("Error fetching CVEs MITRE:", e.message);
+    } catch (e) {
+      console.log("NVD fetch error:", e.message);
     }
 
     // --- 3. Response final ---
@@ -68,7 +62,7 @@ export async function onRequest({ request }) {
       version: ver,
       veredicto: verdict,
       ciclo: cycle || null,
-      fuentes: ["https://endoflife.date", "https://cve.mitre.org"],
+      fuentes: ["https://endoflife.date", "https://nvd.nist.gov"],
       cves
     }), { headers: { "Content-Type": "application/json" } });
 
