@@ -1,7 +1,6 @@
 /**
  * Check EOL + CVEs
- * Professionalized version: Fetches end-of-life info and public CVEs.
- * Sources: endoflife.date (EOL), cvedetails.com (CVEs)
+ * Sources: endoflife.date (EOL), MITRE CVE public feed (scraping ligero)
  */
 
 export async function onRequest({ request }) {
@@ -29,42 +28,38 @@ export async function onRequest({ request }) {
     const cycles = await eolRes.json();
     const majorVer = ver.split(".")[0];
     const cycle = cycles.find(c => String(c.cycle).startsWith(majorVer));
-
     const now = new Date();
     const eolDate = cycle?.eol ? new Date(cycle.eol) : null;
     const verdict = eolDate && eolDate < now ? "OBSOLETA" : "CON SOPORTE";
 
-    // --- 2. CVEs (public scraping from CVEDetails) ---
-    // Simple and lightweight: fetch search page and parse links (no API key required)
+    // --- 2. CVEs reales desde MITRE ---
     let cves = [];
     try {
-      const searchUrl = `https://www.cvedetails.com/vulnerability-list/vendor_id-0/product_id-0/version_id-0/page-1/`;
-      // Nota: Este es un ejemplo simple, se puede reemplazar con otro motor público si quieres
-      // Para simplificar, devolvemos CVEs ficticios simulados
-      cves = [
-        {
-          id: "CVE-2023-1234",
-          url: "https://www.cvedetails.com/cve/CVE-2023-1234/",
-          severity: "HIGH",
-          score: 7.5,
-          published: "2023-02-15"
-        },
-        {
-          id: "CVE-2023-5678",
-          url: "https://www.cvedetails.com/cve/CVE-2023-5678/",
-          severity: "CRITICAL",
-          score: 9.1,
-          published: "2023-01-10"
-        }
-      ];
+      // MITRE CVE search query: https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=<tec>+<ver>
+      const searchUrl = `https://cve.mitre.org/cgi-bin/cvekey.cgi?keyword=${encodeURIComponent(tec)}+${encodeURIComponent(ver)}`;
+      const html = await fetch(searchUrl).then(r => r.text());
 
-      // Filtro de severidad si se especifica
-      if (sevFilter) {
-        cves = cves.filter(c => c.severity === sevFilter || (sevFilter === "HIGH" && c.severity === "CRITICAL"));
+      // Regex ligero para capturar los CVE IDs y links
+      const regex = /<a href="(\/cgi-bin\/CVEkey\.cgi\?keyword=CVE-\d+-\d+)">((CVE-\d+-\d+))<\/a>/g;
+      let match;
+      while ((match = regex.exec(html)) !== null) {
+        cves.push({
+          id: match[3],
+          url: `https://cve.mitre.org${match[1]}`,
+          severity: 'NA',   // MITRE no da score directo
+          score: '-',       // se puede integrar CVSS de NVD si se quiere
+          published: '-'
+        });
       }
 
-    } catch (e) {
-      console.log("Error fetching CVEs:", e.message);
+      // Filtrar severidad si se indica HIGH/CRITICAL (solo placeholder, MITRE no tiene score en la página)
+      if (sevFilter) {
+        // En este ejemplo no filtramos porque no hay severidad en MITRE HTML
+        // Puedes integrar CVSS de NVD para filtrar si quieres
+      }
+
+    } catch(e) {
+      console.log("Error fetching CVEs MITRE:", e.message);
     }
 
     // --- 3. Response final ---
@@ -73,19 +68,14 @@ export async function onRequest({ request }) {
       version: ver,
       veredicto: verdict,
       ciclo: cycle || null,
-      fuentes: ["https://endoflife.date", "https://www.cvedetails.com"],
+      fuentes: ["https://endoflife.date", "https://cve.mitre.org"],
       cves
-    }), {
-      headers: { "Content-Type": "application/json" }
-    });
+    }), { headers: { "Content-Type": "application/json" } });
 
   } catch (err) {
     return new Response(JSON.stringify({
       error: "Error interno",
       detail: err.message
-    }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    }), { status: 500, headers: { "Content-Type": "application/json" } });
   }
 }
