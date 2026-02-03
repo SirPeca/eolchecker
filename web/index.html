@@ -1,184 +1,120 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Checker EOL & CVEs</title>
-
+<meta charset="UTF-8" />
+<title>EOL & CVE Checker</title>
 <style>
-  * { box-sizing: border-box; }
-  body {
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    background:#f4f6f8;
-    color:#1f2328;
-    margin:0;
-    padding:2rem;
-  }
-  main {
-    max-width:900px;
-    margin:auto;
-    background:#fff;
-    padding:2rem;
-    border-radius:14px;
-    box-shadow:0 10px 25px rgba(0,0,0,.08);
-  }
-
-  h1 { color:#0a84ff; text-align:center; margin-bottom:1.5rem; }
-
-  label { font-weight:600; margin-top:.8rem; display:block; }
-  input, select {
-    width:100%;
-    padding:.6rem;
-    border-radius:8px;
-    border:1px solid #d0d7de;
-    margin-top:.2rem;
-  }
-
-  button {
-    margin-top:1.2rem;
-    padding:.7rem;
-    width:100%;
-    background:#0a84ff;
-    border:none;
-    border-radius:8px;
-    color:white;
-    font-weight:600;
-    cursor:pointer;
-  }
-  button:hover { background:#006edc; }
-
-  .panel {
-    margin-top:1.5rem;
-    padding:1rem;
-    border-radius:10px;
-    background:#f9f9f9;
-  }
-
-  .verdict { font-size:1.2rem; font-weight:700; }
-  .verdict.OBSOLETA { color:#c00; }
-  .verdict.CON { color:#0a7; }
-
-  table {
-    width:100%;
-    border-collapse:collapse;
-    margin-top:1rem;
-  }
-  th, td {
-    border:1px solid #d0d7de;
-    padding:.6rem;
-    text-align:left;
-  }
-  th { background:#0a84ff; color:white; }
-
-  .tag {
-    padding:.25rem .5rem;
-    border-radius:6px;
-    font-size:.85rem;
-    font-weight:600;
-    color:white;
-  }
-  .sev-CRITICAL { background:#c00; }
-  .sev-HIGH { background:#e67e22; }
-  .sev-MEDIUM { background:#f1c40f; color:#111; }
-  .sev-LOW { background:#2ecc71; color:#111; }
-
-  .muted { color:#555; font-style:italic; }
-  a { color:#0a84ff; text-decoration:none; }
+body {
+  font-family: Inter, system-ui, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+  margin: 0;
+  padding: 40px;
+}
+.container {
+  max-width: 900px;
+  margin: auto;
+}
+input, button, select {
+  padding: 10px;
+  margin: 5px;
+  border-radius: 6px;
+  border: none;
+}
+button {
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+button:disabled {
+  background: #475569;
+}
+.summary {
+  margin: 20px 0;
+}
+.cve {
+  background: #020617;
+  padding: 12px;
+  margin: 10px 0;
+  border-left: 6px solid gray;
+}
+.CRITICAL { border-color: #ef4444; }
+.HIGH { border-color: #f97316; }
+.MEDIUM { border-color: #facc15; }
+.LOW { border-color: #22c55e; }
+a { color: #38bdf8; }
 </style>
 </head>
 
 <body>
-<main>
-  <h1>Checker de soporte y CVEs</h1>
+<div class="container">
+<h1>Checker de soporte y CVEs</h1>
 
-  <form id="form">
-    <label>Tecnología</label>
-    <input id="tec" value="openssl" required />
+<input id="tech" placeholder="Tecnología" />
+<input id="version" placeholder="Versión" />
 
-    <label>Versión</label>
-    <input id="ver" value="1.0.1" required />
+<select id="severity">
+  <option value="ALL">Todas</option>
+  <option value="CRITICAL">Critical</option>
+  <option value="HIGH">High</option>
+  <option value="MEDIUM">Medium</option>
+  <option value="LOW">Low</option>
+</select>
 
-    <button type="submit">Consultar</button>
-  </form>
+<button id="btn">Consultar</button>
 
-  <section id="out" class="panel"></section>
-</main>
+<div id="status"></div>
+<div id="info"></div>
+<div id="summary" class="summary"></div>
+<div id="results"></div>
+</div>
 
 <script>
-const out = document.getElementById("out");
+const btn = document.getElementById("btn");
 
-const fmtDate = d => d ? new Date(d).toLocaleDateString() : "-";
-const sevTag = s => `<span class="tag sev-${s}">${s}</span>`;
+btn.onclick = async () => {
+  const tech = document.getElementById("tech").value.trim();
+  const version = document.getElementById("version").value.trim();
+  const filter = document.getElementById("severity").value;
 
-document.getElementById("form").addEventListener("submit", async e => {
-  e.preventDefault();
-  out.innerHTML = "<em>Consultando…</em>";
-
-  const tec = tecInput.value.trim();
-  const ver = verInput.value.trim();
-
-  try {
-    const res = await fetch(`/check?tec=${encodeURIComponent(tec)}&ver=${encodeURIComponent(ver)}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-
-    let html = `
-      <div class="verdict ${data.veredicto}">${data.veredicto}</div>
-      <p><strong>Tecnología:</strong> ${data.tecnologia.toUpperCase()} |
-         <strong>Versión:</strong> ${data.version}</p>
-
-      ${data.ciclo ? `
-        <p>
-          <strong>EOL:</strong> ${fmtDate(data.ciclo.eol)} |
-          <strong>Latest ciclo:</strong> ${data.ciclo.latest || "-"}
-        </p>` : ""}
-
-      <p>
-        <strong>Última versión con soporte:</strong>
-        ${data.ultima_version_con_soporte || "<span class='muted'>No disponible</span>"}<br/>
-        <strong>Última versión publicada:</strong>
-        ${data.ultima_version_publicada || "-"}
-      </p>
-
-      <h4>Resumen CVEs</h4>
-      <p>
-        Total: ${data.summary.total}
-        ${sevTag("CRITICAL")} ${data.summary.CRITICAL}
-        ${sevTag("HIGH")} ${data.summary.HIGH}
-        ${sevTag("MEDIUM")} ${data.summary.MEDIUM}
-        ${sevTag("LOW")} ${data.summary.LOW}
-      </p>
-    `;
-
-    if (data.cves.length) {
-      html += `
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th><th>Severidad</th><th>Score</th><th>Publicado</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.cves.map(c => `
-              <tr>
-                <td><a href="${c.url}" target="_blank">${c.id}</a></td>
-                <td>${sevTag(c.severity)}</td>
-                <td>${c.score}</td>
-                <td>${fmtDate(c.published)}</td>
-              </tr>`).join("")}
-          </tbody>
-        </table>
-      `;
-    } else {
-      html += `<p class="muted">No se encontraron CVEs para esta versión.</p>`;
-    }
-
-    out.innerHTML = html;
-
-  } catch (err) {
-    out.innerHTML = `<p class="muted">Error: ${err.message}</p>`;
+  if (!tech || !version) {
+    alert("Completa tecnología y versión");
+    return;
   }
-});
+
+  btn.disabled = true;
+  document.getElementById("status").innerText = "Consultando...";
+  document.getElementById("results").innerHTML = "";
+
+  const res = await fetch(`/check?tech=${tech}&version=${version}`);
+  const data = await res.json();
+
+  btn.disabled = false;
+  document.getElementById("status").innerText = "";
+
+  document.getElementById("info").innerHTML = `
+    <b>Última versión publicada:</b> ${data.latest_version}<br>
+    <b>Última versión con soporte:</b> ${data.latest_supported_version}
+  `;
+
+  document.getElementById("summary").innerText =
+    `Total CVEs: ${data.summary.total} | ` +
+    `CRITICAL: ${data.summary.CRITICAL} | ` +
+    `HIGH: ${data.summary.HIGH}`;
+
+  data.cves
+    .filter(c => filter === "ALL" || c.severity === filter)
+    .forEach(cve => {
+      const div = document.createElement("div");
+      div.className = `cve ${cve.severity}`;
+      div.innerHTML = `
+        <b>${cve.id}</b> (${cve.severity})<br>
+        ${cve.description}<br>
+        <a href="${cve.url}" target="_blank">Ver en NVD</a>
+      `;
+      document.getElementById("results").appendChild(div);
+    });
+};
 </script>
 </body>
 </html>
