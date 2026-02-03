@@ -1,4 +1,5 @@
-/* ======================= CATALOGO DE TECNOLOGIAS ======================= */
+// ======================= CATALOGO DE TECNOLOGIAS =======================
+const CATALOG_UPDATE_DATE = "2026-02-03"; // fecha de última actualización del catálogo
 const CATALOG = {
   "jquery": { name: "jQuery", key: "jquery" },
   "jquery ui": { name: "jQuery UI", key: "jquery ui" },
@@ -88,58 +89,70 @@ const CATALOG = {
   "tailwind": { name: "Tailwind CSS", key: "tailwindcss" }
 };
 
-const CATALOG_UPDATE_DATE = "03-02-2026"; // Mostrar en frontend
-
+// ======================= WORKER =======================
 export async function onRequest({ request }) {
   try {
     const url = new URL(request.url);
     const techRaw = url.searchParams.get("tec");
     const versionRaw = url.searchParams.get("ver");
+
     if (!techRaw || !versionRaw) {
       return json({ error: "Parámetros requeridos: tec, ver" }, 400);
     }
+
     const tech = techRaw.trim().toLowerCase();
     const version = versionRaw.trim();
 
-    /* ======================= 1️⃣ END OF LIFE / CATALOG CHECK ======================= */
+    // ======================= 1️⃣ END OF LIFE CHECK =======================
+    let eolData = null;
+    try {
+      const eolRes = await fetch(`https://endoflife.date/api/${encodeURIComponent(tech)}.json`, { cf: { cacheTtl: 3600 } });
+      if (eolRes.ok) {
+        eolData = await eolRes.json();
+      }
+    } catch {}
+
+    let cycle = null;
     let latest = null;
     let latestSupported = null;
     let status = "DESCONOCIDO";
-    let ciclo = null;
 
-    // Primero: buscar en catálogo interno
+    // Validar contra catálogo primero
     if (CATALOG[tech]) {
       latest = CATALOG[tech].latest;
       latestSupported = CATALOG[tech].supported;
+
       if (version === latestSupported) {
         status = "CON SOPORTE";
-      } else if (version !== latestSupported) {
+      } else {
         status = "DESACTUALIZADO";
       }
-    } else {
-      // Segundo: intentar EOL.date para librerías fuera de JS
-      try {
-        const eolRes = await fetch(`https://endoflife.date/api/${tech}.json`, { cf: { cacheTtl: 3600 } });
-        if (eolRes.ok) {
-          const eolData = await eolRes.json();
-          ciclo = eolData.find(c => c.cycle && version.startsWith(String(c.cycle)));
-          latest = eolData.find(c => c.latest)?.latest || null;
-          latestSupported = eolData.find(c => !c.eol || new Date(c.eol) > new Date())?.latest || null;
-          if (ciclo?.eol) {
-            status = new Date(ciclo.eol) < new Date() ? "FUERA DE SOPORTE" : "CON SOPORTE";
-          } else {
-            status = "CON SOPORTE";
-          }
+
+      // Si EOL data existe, verificar ciclo real
+      if (Array.isArray(eolData)) {
+        cycle = eolData.find(c => c.cycle && version.startsWith(String(c.cycle)));
+        if (cycle?.eol && new Date(cycle.eol) < new Date()) {
+          status = "FUERA DE SOPORTE";
         }
-      } catch {}
+      }
+    } else if (Array.isArray(eolData)) {
+      cycle = eolData.find(c => c.cycle && version.startsWith(String(c.cycle)));
+      latest = eolData.find(c => c.latest)?.latest || null;
+      latestSupported = eolData.find(c => !c.eol || new Date(c.eol) > new Date())?.latest || null;
+
+      if (cycle?.eol) {
+        status = new Date(cycle.eol) < new Date() ? "FUERA DE SOPORTE" : "CON SOPORTE";
+      }
+
+      if (latest && latestSupported && version !== latestSupported) {
+        status = status === "CON SOPORTE" ? "DESACTUALIZADO" : status;
+      }
     }
 
-    /* ======================= 2️⃣ NVD CVE SEARCH ======================= */
+    // ======================= 2️⃣ NVD CVE SEARCH =======================
     let cves = [];
     try {
-      const cveRes = await fetch(
-        `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(tech)}&resultsPerPage=200`
-      );
+      const cveRes = await fetch(`https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(tech)}&resultsPerPage=200`);
       if (cveRes.ok) {
         const cveJson = await cveRes.json();
         cves = (cveJson.vulnerabilities || [])
@@ -160,7 +173,7 @@ export async function onRequest({ request }) {
       }
     } catch {}
 
-    /* ======================= 3️⃣ ORDER & SUMMARY ======================= */
+    // ======================= 3️⃣ ORDER & SUMMARY =======================
     const order = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNKNOWN: 5 };
     cves.sort((a, b) => order[a.severity] - order[b.severity]);
     const summary = {
@@ -173,9 +186,9 @@ export async function onRequest({ request }) {
       tecnologia: techRaw,
       version,
       estado: status,
-      latestVersion: latest,
-      latestSupportedVersion: latestSupported,
-      ciclo: ciclo || null,
+      latestVersion: latest || "-",
+      latestSupportedVersion: latestSupported || "-",
+      ciclo: cycle || null,
       cves,
       resumen: summary,
       fuentes: ["https://endoflife.date", "https://nvd.nist.gov"],
@@ -188,8 +201,5 @@ export async function onRequest({ request }) {
 }
 
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" }
-  });
+  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 }
