@@ -1,4 +1,4 @@
-//  ======================= CATALOGO DE TECNOLOGIAS =======================
+// ======================= CATALOGO DE TECNOLOGIAS =======================
 const CATALOG_UPDATE_DATE = "2026-02-03"; // fecha de última actualización del catálogo
 const CATALOG = {
   "jquery": { name: "jQuery", key: "jquery" },
