@@ -4,10 +4,11 @@ const SEVERITY_ORDER = {
   CRITICAL: 4,
   HIGH: 3,
   MEDIUM: 2,
-  LOW: 1
+  LOW: 1,
+  UNKNOWN: 0
 };
 
-function normalizeSeverity(cve) {
+function extractSeverity(cve) {
   return (
     cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity ||
     cve.metrics?.cvssMetricV30?.[0]?.cvssData?.baseSeverity ||
@@ -16,11 +17,9 @@ function normalizeSeverity(cve) {
   );
 }
 
-export async function onRequest(context) {
-  const { request, env } = context;
+export async function onRequest({ request, env }) {
   const url = new URL(request.url);
-
-  const tech = url.searchParams.get("tech")?.toLowerCase().trim();
+  const tech = url.searchParams.get("tech")?.trim();
   const version = url.searchParams.get("version")?.trim();
 
   if (!tech || !version) {
@@ -30,8 +29,8 @@ export async function onRequest(context) {
     );
   }
 
-  const cpe = `cpe:2.3:a:${tech}:${tech}:${version}:*:*:*:*:*:*:*`;
-  const apiUrl = `${NVD_API}?cpeName=${encodeURIComponent(cpe)}&resultsPerPage=50`;
+  const query = `${tech} ${version}`;
+  const apiUrl = `${NVD_API}?keywordSearch=${encodeURIComponent(query)}&resultsPerPage=100`;
 
   let cves = [];
 
@@ -44,32 +43,26 @@ export async function onRequest(context) {
 
     cves = (data.vulnerabilities || []).map(v => {
       const cve = v.cve;
-      const severity = normalizeSeverity(cve);
+      const severity = extractSeverity(cve);
 
       return {
         id: cve.id,
         severity,
-        description: cve.descriptions?.[0]?.value || "No description",
         score:
           cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore ||
           cve.metrics?.cvssMetricV30?.[0]?.cvssData?.baseScore ||
           null,
+        published: cve.published,
+        description: cve.descriptions?.[0]?.value || "No description",
         url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
       };
     });
 
-  } catch (err) {
-    return new Response(
-      JSON.stringify({
-        technology: tech,
-        version,
-        cves: [],
-        error: "NVD unavailable"
-      }),
-      { headers: { "Cache-Control": "no-store" } }
-    );
+  } catch {
+    cves = [];
   }
 
+  // Orden por severidad
   cves.sort(
     (a, b) =>
       (SEVERITY_ORDER[b.severity] || 0) -
@@ -88,10 +81,12 @@ export async function onRequest(context) {
     JSON.stringify({
       technology: tech,
       version,
-      latest_version: tech === "jquery" ? "3.7.1" : "1.1.1w",
-      latest_supported_version: tech === "jquery" ? "3.7.1" : "1.1.1w",
       summary,
-      cves
+      cves,
+      fuentes: [
+        "https://nvd.nist.gov",
+        "https://cve.mitre.org"
+      ]
     }),
     {
       headers: {
