@@ -7,15 +7,6 @@ const SEVERITY_ORDER = {
   LOW: 1
 };
 
-function timeoutFetch(url, options = {}, timeout = 10000) {
-  return Promise.race([
-    fetch(url, options),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("NVD timeout")), timeout)
-    )
-  ]);
-}
-
 function normalizeSeverity(cve) {
   return (
     cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity ||
@@ -26,12 +17,17 @@ function normalizeSeverity(cve) {
 }
 
 export async function onRequest(context) {
-  const url = new URL(context.request.url);
-  const tech = url.searchParams.get("tech")?.toLowerCase();
-  const version = url.searchParams.get("version");
+  const { request, env } = context;
+  const url = new URL(request.url);
+
+  const tech = url.searchParams.get("tech")?.toLowerCase().trim();
+  const version = url.searchParams.get("version")?.trim();
 
   if (!tech || !version) {
-    return Response.json({ error: "Missing parameters" }, { status: 400 });
+    return new Response(
+      JSON.stringify({ error: "Missing parameters" }),
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   const cpe = `cpe:2.3:a:${tech}:${tech}:${version}:*:*:*:*:*:*:*`;
@@ -40,37 +36,38 @@ export async function onRequest(context) {
   let cves = [];
 
   try {
-    const res = await timeoutFetch(apiUrl, {
-      headers: context.env.API_KEY
-        ? { apiKey: context.env.API_KEY }
-        : {}
+    const res = await fetch(apiUrl, {
+      headers: env.API_KEY ? { apiKey: env.API_KEY } : {}
     });
 
     const data = await res.json();
 
-    cves =
-      data.vulnerabilities?.map(v => {
-        const cve = v.cve;
-        const severity = normalizeSeverity(cve);
-        return {
-          id: cve.id,
-          severity,
-          description: cve.descriptions?.[0]?.value || "",
-          score:
-            cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore ||
-            cve.metrics?.cvssMetricV30?.[0]?.cvssData?.baseScore ||
-            null,
-          url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
-        };
-      }) || [];
+    cves = (data.vulnerabilities || []).map(v => {
+      const cve = v.cve;
+      const severity = normalizeSeverity(cve);
+
+      return {
+        id: cve.id,
+        severity,
+        description: cve.descriptions?.[0]?.value || "No description",
+        score:
+          cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore ||
+          cve.metrics?.cvssMetricV30?.[0]?.cvssData?.baseScore ||
+          null,
+        url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
+      };
+    });
 
   } catch (err) {
-    return Response.json({
-      technology: tech,
-      version,
-      cves: [],
-      error: "NVD API timeout or unavailable"
-    });
+    return new Response(
+      JSON.stringify({
+        technology: tech,
+        version,
+        cves: [],
+        error: "NVD unavailable"
+      }),
+      { headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   cves.sort(
@@ -87,12 +84,20 @@ export async function onRequest(context) {
     LOW: cves.filter(c => c.severity === "LOW").length
   };
 
-  return Response.json({
-    technology: tech,
-    version,
-    latest_version: "1.1.1w",
-    latest_supported_version: "1.1.1w",
-    summary,
-    cves
-  });
+  return new Response(
+    JSON.stringify({
+      technology: tech,
+      version,
+      latest_version: tech === "jquery" ? "3.7.1" : "1.1.1w",
+      latest_supported_version: tech === "jquery" ? "3.7.1" : "1.1.1w",
+      summary,
+      cves
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"
+      }
+    }
+  );
 }
