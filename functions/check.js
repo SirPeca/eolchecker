@@ -1,145 +1,136 @@
-const NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0";
-
-/**
- * Catálogo curado (extensible)
- * Agregar aquí NO rompe nada
- */
-const TECH_CATALOG = {
-  openssl: { vendor: "openssl", product: "openssl", eol: "openssl" },
-  jquery: { vendor: "jquery", product: "jquery", eol: "jquery" },
-  bootstrap: { vendor: "twbs", product: "bootstrap", eol: "bootstrap" },
-  vue: { vendor: "vuejs", product: "vue.js", eol: "vue" },
-  react: { vendor: "facebook", product: "react", eol: "react" },
-  angular: { vendor: "google", product: "angular", eol: "angular" },
-  php: { vendor: "php", product: "php", eol: "php" },
-  nginx: { vendor: "nginx", product: "nginx", eol: "nginx" }
+const CATALOG = {
+  openssl: {
+    cpe: "cpe:2.3:a:openssl:openssl",
+    latest: "3.6.1",
+    supported: "3.6.1",
+    eolBelow: "1.1.1",
+  },
+  bootstrap: {
+    cpe: "cpe:2.3:a:twbs:bootstrap",
+    latest: "5.3.8",
+    supported: "5.3.8",
+    eolBelow: "4.0.0",
+  },
+  jquery: {
+    cpe: "cpe:2.3:a:jquery:jquery",
+    latest: "3.7.1",
+    supported: "3.7.1",
+    eolBelow: "3.0.0",
+  },
+  vue: {
+    cpe: "cpe:2.3:a:vuejs:vue",
+    latest: "3.4.27",
+    supported: "3.4.27",
+    eolBelow: "2.7.0",
+  }
+  // 👉 aquí se agregan las top 100 sin tocar la lógica
 };
 
-const SEV_SCORE = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 
-function extractSeverity(cve) {
-  return (
-    cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity ||
-    cve.metrics?.cvssMetricV30?.[0]?.cvssData?.baseSeverity ||
-    cve.metrics?.cvssMetricV2?.[0]?.baseSeverity ||
-    "UNKNOWN"
-  );
-}
+document.getElementById("checkBtn").addEventListener("click", runCheck);
 
-function computeVerdict({ eolDate, latestSupported, inputVersion, cves }) {
-  const now = new Date();
-  const hasCritical = cves.some(c => c.severity === "CRITICAL");
-  const hasHigh = cves.some(c => c.severity === "HIGH");
+async function runCheck() {
+  const tech = document.getElementById("technology").value.trim().toLowerCase();
+  const version = document.getElementById("version").value.trim();
+  const severityFilter = document.getElementById("severity").value;
+  const result = document.getElementById("result");
 
-  if (eolDate && new Date(eolDate) < now) {
-    if (hasCritical || hasHigh) {
-      return { status: "OBSOLETA", risk: "ALTO" };
-    }
-    return { status: "FUERA DE SOPORTE", risk: "MEDIO" };
+  result.innerHTML = "<div class='alert alert-info'>Consultando…</div>";
+
+  if (!tech || !version) {
+    result.innerHTML = "<div class='alert alert-warning'>Complete tecnología y versión.</div>";
+    return;
   }
 
-  if (latestSupported && latestSupported !== inputVersion) {
-    return { status: "DESACTUALIZADA", risk: hasCritical ? "ALTO" : "MEDIO" };
-  }
+  const catalog = CATALOG[tech];
+  let statusText = "Estado desconocido";
+  let statusClass = "";
 
-  return { status: "SOPORTADA", risk: hasCritical ? "MEDIO" : "BAJO" };
-}
-
-export async function onRequest({ request, env }) {
-  const url = new URL(request.url);
-  const techRaw = url.searchParams.get("tech")?.toLowerCase().trim();
-  const version = url.searchParams.get("version")?.trim();
-
-  if (!techRaw || !version) {
-    return Response.json({ error: "Missing parameters" }, { status: 400 });
-  }
-
-  const tech = TECH_CATALOG[techRaw];
-  let cycles = [];
-  let latest = null;
-  let latestSupported = null;
-  let eolDate = null;
-
-  // ---------- EOL ----------
-  if (tech?.eol) {
-    try {
-      const eolRes = await fetch(`https://endoflife.date/api/${tech.eol}.json`);
-      cycles = await eolRes.json();
-      latest = cycles[0]?.latest || null;
-
-      const active = cycles.find(c => !c.eol || new Date(c.eol) > new Date());
-      latestSupported = active?.latest || null;
-
-      const matched = cycles.find(c => String(version).startsWith(String(c.cycle)));
-      eolDate = matched?.eol || null;
-    } catch {}
-  }
-
-  // ---------- CVEs ----------
-  let cves = [];
-  let coverage = "exact";
-
-  try {
-    let apiUrl;
-
-    if (tech) {
-      const cpe = `cpe:2.3:a:${tech.vendor}:${tech.product}:${version}:*:*:*:*:*:*:*`;
-      apiUrl = `${NVD_API}?cpeName=${encodeURIComponent(cpe)}&resultsPerPage=100`;
+  if (catalog) {
+    if (compare(version, catalog.eolBelow) < 0) {
+      statusText = "❌ Software fuera de soporte (EOL)";
+      statusClass = "status-eol";
+    } else if (version !== catalog.latest) {
+      statusText = "⚠️ Software desactualizado";
+      statusClass = "status-outdated";
     } else {
-      // Fallback heurístico controlado
-      coverage = "heuristic";
-      apiUrl = `${NVD_API}?keywordSearch=${encodeURIComponent(`${techRaw} ${version}`)}&resultsPerPage=50`;
+      statusText = "✅ Software soportado";
+      statusClass = "status-supported";
     }
+  }
 
-    const res = await fetch(apiUrl, {
-      headers: env.API_KEY ? { apiKey: env.API_KEY } : {}
-    });
+  let cves = [];
+  if (catalog) {
+    cves = await fetchCVEs(catalog.cpe, version);
+  }
 
-    const data = await res.json();
+  if (severityFilter !== "ALL") {
+    cves = cves.filter(c => c.severity === severityFilter);
+  }
 
-    cves = (data.vulnerabilities || []).map(v => {
-      const cve = v.cve;
-      return {
-        id: cve.id,
-        severity: extractSeverity(cve),
-        description: cve.descriptions?.[0]?.value || "",
-        url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
-      };
-    });
-
-  } catch {}
-
-  cves.sort((a, b) => (SEV_SCORE[b.severity] || 0) - (SEV_SCORE[a.severity] || 0));
+  cves.sort((a, b) =>
+    SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity)
+  );
 
   const summary = {
     total: cves.length,
     CRITICAL: cves.filter(c => c.severity === "CRITICAL").length,
-    HIGH: cves.filter(c => c.severity === "HIGH").length
+    HIGH: cves.filter(c => c.severity === "HIGH").length,
   };
 
-  const verdict = computeVerdict({
-    eolDate,
-    latestSupported,
-    inputVersion: version,
-    cves
-  });
+  let html = `
+  <div class="card p-4">
+    <p><strong>Última versión publicada:</strong> ${catalog?.latest ?? "No disponible"}</p>
+    <p><strong>Última versión con soporte:</strong> ${catalog?.supported ?? "No disponible"}</p>
+    <p class="${statusClass}">${statusText}</p>
+    <hr>
+    <p><strong>Total CVEs:</strong> ${summary.total} |
+       CRITICAL: ${summary.CRITICAL} |
+       HIGH: ${summary.HIGH}</p>
+  `;
 
-  return Response.json(
-    {
-      technology: techRaw,
-      version,
-      status: verdict.status,
-      risk: verdict.risk,
-      latest_version: latest,
-      latest_supported_version: latestSupported,
-      coverage,
-      summary,
-      cves,
-      fuentes: [
-        "https://endoflife.date",
-        "https://nvd.nist.gov"
-      ]
-    },
-    { headers: { "Cache-Control": "no-store" } }
-  );
+  if (cves.length === 0) {
+    html += `<div class="alert alert-success">No se encontraron CVEs relevantes.</div>`;
+  } else {
+    cves.forEach(cve => {
+      html += `
+      <div class="mb-3">
+        <span class="badge badge-${cve.severity.toLowerCase()}">${cve.severity}</span>
+        <strong>${cve.id}</strong><br>
+        ${cve.desc}<br>
+        <a href="https://nvd.nist.gov/vuln/detail/${cve.id}" target="_blank">Ver en NVD</a>
+      </div>`;
+    });
+  }
+
+  html += "</div>";
+  result.innerHTML = html;
+}
+
+async function fetchCVEs(cpe, version) {
+  const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=${cpe}:${version}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.vulnerabilities) return [];
+
+    return data.vulnerabilities.map(v => ({
+      id: v.cve.id,
+      severity: v.cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity || "LOW",
+      desc: v.cve.descriptions[0].value
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function compare(a, b) {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
 }
