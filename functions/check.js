@@ -1,15 +1,5 @@
-// ======================= check.js =======================
-/*
-  Version final híbrida:
-  - Catálogo Top 100 librerías
-  - EndOfLife.date fallback
-  - CVEs desde NVD
-  - Estado de soporte
-  - Última versión publicada / con soporte
-  - Campo catalogUpdated para front
-*/
-
-const JS_LIBS = {
+/* ======================= CATALOGO DE TECNOLOGIAS ======================= */
+const CATALOG = {
   "jquery": { name: "jQuery", key: "jquery" },
   "jquery ui": { name: "jQuery UI", key: "jquery ui" },
   "jquery blockui": { name: "jQuery BlockUI", key: "jquery blockui" },
@@ -60,18 +50,50 @@ const JS_LIBS = {
   "matomo": { name: "Matomo Analytics", key: "matomo" },
   "font awesome": { name: "Font Awesome", key: "fontawesome" },
   "microsoft asp.net": { name: "ASP.NET", key: "asp.net" },
-  "hsts": { name: "HSTS", key: "hsts" }
-  // puedes ampliar el top 100 completo aquí
+  "hsts": { name: "HSTS", key: "hsts" },
+  "rxjs": { name: "RxJS", key: "rxjs" },
+  "immer": { name: "Immer", key: "immer" },
+  "recoil": { name: "Recoil", key: "recoil" },
+  "zustand": { name: "Zustand", key: "zustand" },
+  "formik": { name: "Formik", key: "formik" },
+  "yup": { name: "Yup", key: "yup" },
+  "joi": { name: "Joi", key: "joi" },
+  "react-query": { name: "React Query", key: "react-query" },
+  "react-router": { name: "React Router", key: "react-router" },
+  "next.js": { name: "Next.js", key: "next" },
+  "gatsby": { name: "Gatsby", key: "gatsby" },
+  "vite": { name: "Vite", key: "vite" },
+  "parcel": { name: "Parcel", key: "parcel" },
+  "rollup": { name: "Rollup", key: "rollup" },
+  "eslint": { name: "ESLint", key: "eslint" },
+  "prettier": { name: "Prettier", key: "prettier" },
+  "stylelint": { name: "Stylelint", key: "stylelint" },
+  "jest": { name: "Jest", key: "jest" },
+  "mocha": { name: "Mocha", key: "mocha" },
+  "chai": { name: "Chai", key: "chai" },
+  "cypress": { name: "Cypress", key: "cypress" },
+  "playwright": { name: "Playwright", key: "playwright" },
+  "puppeteer": { name: "Puppeteer", key: "puppeteer" },
+  "karma": { name: "Karma", key: "karma" },
+  "protractor": { name: "Protractor", key: "protractor" },
+  "nightwatch": { name: "Nightwatch", key: "nightwatch" },
+  "webdriverio": { name: "WebdriverIO", key: "webdriverio" },
+  "capybara": { name: "Capybara", key: "capybara" },
+  "selenium": { name: "Selenium", key: "selenium" },
+  "cucumber": { name: "Cucumber", key: "cucumber" },
+  "chai-http": { name: "Chai HTTP", key: "chai-http" },
+  "supertest": { name: "Supertest", key: "supertest" },
+  "nvd": { name: "NVD", key: "nvd" },
+  "endoflife.date": { name: "EndOfLife.date", key: "endoflife.date" },
+  "tailwind": { name: "Tailwind CSS", key: "tailwindcss" }
 };
 
-// Fecha de la última actualización del catálogo
-const CATALOG_UPDATED = "03-02-2026";
-
+/* ======================= FUNCION PRINCIPAL ======================= */
 export async function onRequest({ request }) {
   try {
     const url = new URL(request.url);
-    const techRaw = url.searchParams.get("tec");
-    const versionRaw = url.searchParams.get("ver");
+    const techRaw = url.searchParams.get("tec") || "";
+    const versionRaw = url.searchParams.get("ver") || "";
 
     if (!techRaw || !versionRaw) {
       return json({ error: "Parámetros requeridos: tec, ver" }, 400);
@@ -80,40 +102,48 @@ export async function onRequest({ request }) {
     const tech = techRaw.trim().toLowerCase();
     const version = versionRaw.trim();
 
-    // ======================= 1️⃣ END OF LIFE CHECK =======================
+    /* ======================= 1️⃣ END OF LIFE CHECK ======================= */
     let eolData = null;
     try {
-      const eolRes = await fetch(`https://endoflife.date/api/${tech}.json`, { cf: { cacheTtl: 3600 } });
+      const eolRes = await fetch(`https://endoflife.date/api/${tech}.json`, {
+        cf: { cacheTtl: 3600 }
+      });
       if (eolRes.ok) eolData = await eolRes.json();
     } catch {}
 
-    let cycle = null;
     let latest = null;
     let latestSupported = null;
+    let cycle = null;
     let status = "DESCONOCIDO";
 
-    if (JS_LIBS[tech]) {
-      // Usar catálogo como prioridad
-      latest = JS_LIBS[tech].latestVersion || null;
-      latestSupported = JS_LIBS[tech].latestSupported || null;
-      cycle = JS_LIBS[tech].cycle || null;
-      status = JS_LIBS[tech].status || "CON SOPORTE";
-    } else if (Array.isArray(eolData)) {
+    if (Array.isArray(eolData)) {
       latest = eolData.find(c => c.latest)?.latest || null;
       latestSupported = eolData.find(c => !c.eol || new Date(c.eol) > new Date())?.latest || null;
+
       cycle = eolData.find(c => c.cycle && version.startsWith(String(c.cycle)));
+
+      // Estado principal
       if (cycle?.eol) {
-        status = new Date(cycle.eol) < new Date() ? "FUERA DE SOPORTE" : "CON SOPORTE";
+        const eolDate = new Date(cycle.eol);
+        status = eolDate < new Date() ? "FUERA DE SOPORTE" : "CON SOPORTE";
+      }
+
+      // Si está activa pero no es la última soportada
+      if (latestSupported && version !== latestSupported) {
+        status = status === "CON SOPORTE" ? "DESACTUALIZADO" : status;
+      }
+
+      // Version muy antigua
+      if (!cycle && eolData.some(c => new Date(c.eol) < new Date())) {
+        status = "OBSOLETA";
       }
     }
 
-    if (latest && latestSupported && version !== latestSupported) {
-      status = status === "CON SOPORTE" ? "DESACTUALIZADO" : status;
-    }
-
-    // ======================= 2️⃣ NVD CVE SEARCH =======================
+    /* ======================= 2️⃣ NVD CVE SEARCH ======================= */
     const cveRes = await fetch(
-      `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(tech)}&resultsPerPage=200`
+      `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(
+        tech
+      )}&resultsPerPage=200`
     );
 
     let cves = [];
@@ -123,7 +153,10 @@ export async function onRequest({ request }) {
         .map(v => {
           const cve = v.cve;
           const metrics = cve.metrics || {};
-          const score = metrics.cvssMetricV31?.[0]?.cvssData || metrics.cvssMetricV30?.[0]?.cvssData || metrics.cvssMetricV2?.[0]?.cvssData;
+          const score =
+            metrics.cvssMetricV31?.[0]?.cvssData ||
+            metrics.cvssMetricV30?.[0]?.cvssData ||
+            metrics.cvssMetricV2?.[0]?.cvssData;
           return {
             id: cve.id,
             severity: score?.baseSeverity || "UNKNOWN",
@@ -133,10 +166,14 @@ export async function onRequest({ request }) {
             url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
           };
         })
-        .filter(c => c.description.toLowerCase().includes(tech) && c.description.includes(version));
+        .filter(
+          c =>
+            c.description.toLowerCase().includes(tech) &&
+            (version ? c.description.includes(version) : true)
+        );
     }
 
-    // ======================= 3️⃣ ORDER & SUMMARY =======================
+    /* ======================= 3️⃣ ORDER & SUMMARY ======================= */
     const order = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNKNOWN: 5 };
     cves.sort((a, b) => order[a.severity] - order[b.severity]);
 
@@ -146,6 +183,7 @@ export async function onRequest({ request }) {
       high: cves.filter(c => c.severity === "HIGH").length
     };
 
+    /* ======================= 4️⃣ RESPUESTA ======================= */
     return json({
       tecnologia: techRaw,
       version,
@@ -155,15 +193,18 @@ export async function onRequest({ request }) {
       ciclo: cycle || null,
       cves,
       resumen: summary,
-      catalogUpdated: CATALOG_UPDATED,
+      catalogUpdate: "10-02-2026", // aquí puedes actualizar la fecha cuando cambies el catálogo
       fuentes: ["https://endoflife.date", "https://nvd.nist.gov"]
     });
-
   } catch (e) {
     return json({ error: "Error interno", detail: e.message }, 500);
   }
 }
 
+/* ======================= FUNCION AUXILIAR ======================= */
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  });
 }
