@@ -1,55 +1,81 @@
-async function analyze() {
-  const product = document.getElementById("product").value.trim();
-  const version = document.getElementById("version").value.trim();
-  const output = document.getElementById("output");
+const productInput = document.getElementById("product");
+const versionInput = document.getElementById("version");
+const checkBtn = document.getElementById("checkBtn");
+const formMessage = document.getElementById("formMessage");
+const resultsPanel = document.getElementById("results");
+const cveList = document.getElementById("cveList");
+const supportBadge = document.getElementById("supportBadge");
 
-  output.innerHTML = "";
+checkBtn.addEventListener("click", async () => {
+  const product = productInput.value.trim().toLowerCase();
+  const version = versionInput.value.trim();
+
+  formMessage.textContent = "";
+  cveList.innerHTML = "";
+  resultsPanel.style.display = "none";
 
   if (!product || !version) {
-    toastr.error("Completá tecnología y versión");
+    formMessage.textContent = "Debe ingresar producto y versión.";
     return;
   }
 
-  toastr.info("Buscando CVEs…");
+  checkBtn.disabled = true;
+  formMessage.textContent = "Consultando CVEs...";
+  formMessage.className = "message loading";
+
+  supportBadge.textContent = "Support: Unknown";
+  supportBadge.className = "badge unknown";
 
   try {
-    const url = `https://cve.circl.lu/api/search/${encodeURIComponent(product)}/${encodeURIComponent(version)}`;
-    const res = await fetch(url);
+    const response = await fetch(
+      `https://cve.circl.lu/api/search/${encodeURIComponent(product)}/${encodeURIComponent(product)}`
+    );
 
-    if (!res.ok) {
-      throw new Error("Error consultando CIRCL");
+    if (!response.ok) {
+      throw new Error("Respuesta inválida");
     }
 
-    const data = await res.json();
-    const cves = data.data || [];
+    const data = await response.json();
+    const versionLower = version.toLowerCase();
 
-    let html = `
-      <h3>Resultado</h3>
-      <p><b>Tecnología:</b> ${product}</p>
-      <p><b>Versión:</b> ${version}</p>
-      <p><b>Estado de soporte:</b> <i>Unknown (best-effort)</i></p>
-      <p><b>Total CVE:</b> ${cves.length}</p>
-    `;
+    const matchedCVEs = (data.data || []).filter(cve => {
+      const text = JSON.stringify(cve).toLowerCase();
+      return text.includes(versionLower);
+    });
 
-    if (cves.length === 0) {
-      html += `<p>No se encontraron CVEs conocidas.</p>`;
-    } else {
-      cves.slice(0, 20).forEach(cve => {
-        html += `
-          <div class="cve">
-            <b>${cve.id}</b><br/>
-            Score: ${cve.cvss || "N/A"}<br/>
-            ${cve.summary || ""}
-          </div>
-        `;
-      });
+    resultsPanel.style.display = "block";
+    formMessage.textContent = "";
+
+    if (matchedCVEs.length === 0) {
+      cveList.innerHTML =
+        '<div class="message">No se encontraron CVEs para esta versión.</div>';
+      return;
     }
 
-    output.innerHTML = html;
-    toastr.success("Análisis completo");
+    matchedCVEs.forEach(cve => {
+      const div = document.createElement("div");
+      div.className = "cve";
 
+      const cvss =
+        cve.cvss ||
+        (cve.cvss3 && cve.cvss3.baseScore) ||
+        "N/A";
+
+      div.innerHTML = `
+        <div class="cve-header">
+          <div class="cve-id">${cve.id}</div>
+          <div class="cvss">CVSS: ${cvss}</div>
+        </div>
+        <div class="cve-desc">${cve.summary || "Sin descripción disponible."}</div>
+      `;
+
+      cveList.appendChild(div);
+    });
   } catch (err) {
-    console.error(err);
-    toastr.error("No se pudieron obtener CVEs");
+    formMessage.textContent =
+      "No se pudo consultar la fuente de CVEs.";
+    formMessage.className = "message error";
+  } finally {
+    checkBtn.disabled = false;
   }
-}
+});
