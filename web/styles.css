@@ -43,3 +43,4 @@ input:focus{border-color:#3d69ff}
 .cve-list li{margin:.35rem 0; line-height:1.4}
 .small{color:var(--muted); font-size:.9rem}
 @media (max-width:720px){ .grid{grid-template-columns:1fr} }
+``
