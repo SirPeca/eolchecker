@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>EOL & CVE Checker — Precisión estricta</title>
 
-  <!-- CSP estricta para app estática -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  connect-src 'self' https://endoflife.date https://services.nvd.nist.gov;
@@ -17,6 +16,7 @@
 
   <link rel="stylesheet" href="./styles.css">
 </head>
+
 <body>
   <header>
     <h1>EOL & CVE Checker</h1>
@@ -43,22 +43,18 @@
           <div class="grid">
             <label>
               CPE vendor (override)
-              <input id="cpeVendor" placeholder="si no coincide con el nombre" autocomplete="off" />
+              <input id="cpeVendor" />
             </label>
             <label>
               CPE product (override)
-              <input id="cpeProduct" placeholder="si no coincide con el nombre" autocomplete="off" />
+              <input id="cpeProduct" />
             </label>
             <label>
               endoflife.slug (override)
-              <input id="eolSlug" placeholder="p.ej.: openssl" autocomplete="off" />
+              <input id="eolSlug" />
             </label>
           </div>
-          <p class="small">
-            Si no completás estos campos, se usa el modo determinista por defecto:<br>
-            CPE base <code>cpe:2.3:a:&lt;software&gt;:&lt;software&gt;</code> (minúsculas; espacios → guiones),
-            y el <em>slug</em> de endoflife.date será el nombre del software en minúsculas.
-          </p>
+          <p class="small">Si no completás estos campos, se usan los valores automáticos.</p>
         </details>
 
         <div class="hints">
@@ -73,6 +69,7 @@
       <h2>Resultado</h2>
       <div id="classification" class="classification"></div>
       <div id="explanation" class="explanation"></div>
+
       <div id="cveList" class="cve-list hidden">
         <h3>CVEs aplicables confirmados</h3>
         <ul id="cveItems"></ul>
@@ -84,8 +81,9 @@
     <p><strong>Reglas:</strong> sin inferencias, CPE exacto, rangos estrictos. Exactitud &gt; cobertura.</p>
   </footer>
 
-  <!-- 🔥 ESTO ES LO IMPORTANTE: scripts correctamente cargados -->
+  <!-- ESTO ES LO QUE FALTABA: SCRIPTS CORRECTOS -->
   <script src="./config.js"></script>
   <script src="./app.js"></script>
+
 </body>
 </html>
