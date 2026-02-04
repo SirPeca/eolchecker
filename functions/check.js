@@ -4,60 +4,60 @@ export async function onRequest({ request }) {
   const version = url.searchParams.get("ver");
 
   if (!tech || !version) {
-    return json({ error: "Faltan parámetros" }, 400);
+    return json({ error: "Parámetros incompletos" }, 400);
   }
 
-  // =========================
-  // SOPORTE (endoflife.date)
-  // =========================
+  // ================= SOPORTE =================
   let soporte = {
     estado: "SOPORTE NO CONFIRMADO",
     latest: "-"
   };
 
   try {
-    const eolRes = await fetch(`https://endoflife.date/api/${tech}.json`);
-    if (eolRes.ok) {
-      const data = await eolRes.json();
-      const latest = data.find(d => d.latest)?.latest;
-      soporte.latest = latest || "-";
+    const eol = await fetch(`https://endoflife.date/api/${tech}.json`);
+    if (eol.ok) {
+      const data = await eol.json();
       soporte.estado = "CON SOPORTE";
+      soporte.latest = data.find(d => d.latest)?.latest || "-";
     }
   } catch {}
 
-  // =========================
-  // CVE – SOLO CPE EXACTO
-  // =========================
+  // ================= CVE =================
   const cves = [];
 
   try {
-    const nvdRes = await fetch(
+    const res = await fetch(
       "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=2000"
     );
-    const nvd = await nvdRes.json();
+    const jsonNvd = await res.json();
 
-    for (const v of nvd.vulnerabilities || []) {
+    for (const v of jsonNvd.vulnerabilities || []) {
       const cve = v.cve;
 
       for (const conf of cve.configurations || []) {
         for (const node of conf.nodes || []) {
           for (const match of node.cpeMatch || []) {
 
-            if (
-              match.vulnerable === true &&
-              match.criteria.includes(`:${tech}:`) &&
-              match.criteria.endsWith(`:${version}`)
-            ) {
-              const cvss =
-                cve.metrics?.cvssMetricV31?.[0]?.cvssData ||
-                cve.metrics?.cvssMetricV30?.[0]?.cvssData ||
-                null;
+            if (!match.vulnerable) continue;
+            if (!match.criteria.includes(`:${tech}:`)) continue;
 
-              cves.push({
-                id: cve.id,
-                severity: cvss?.baseSeverity || "UNKNOWN",
-                score: cvss?.baseScore || "N/A"
-              });
+            // ---- RANGOS ----
+            if (
+              match.versionStartIncluding ||
+              match.versionEndIncluding ||
+              match.versionEndExcluding
+            ) {
+              if (
+                (!match.versionStartIncluding || version >= match.versionStartIncluding) &&
+                (!match.versionEndIncluding || version <= match.versionEndIncluding) &&
+                (!match.versionEndExcluding || version < match.versionEndExcluding)
+              ) {
+                pushCVE(cves, cve);
+              }
+            }
+            // ---- SIN RANGO ----
+            else if (match.criteria.includes(`:${version}`)) {
+              pushCVE(cves, cve);
             }
           }
         }
@@ -69,7 +69,21 @@ export async function onRequest({ request }) {
     tecnologia: tech,
     version,
     soporte,
+    totalCVE: cves.length,
     cves
+  });
+}
+
+function pushCVE(arr, cve) {
+  const cvss =
+    cve.metrics?.cvssMetricV31?.[0]?.cvssData ||
+    cve.metrics?.cvssMetricV30?.[0]?.cvssData ||
+    null;
+
+  arr.push({
+    id: cve.id,
+    severity: cvss?.baseSeverity || "UNKNOWN",
+    score: cvss?.baseScore || "N/A"
   });
 }
 
