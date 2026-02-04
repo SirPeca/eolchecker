@@ -6,7 +6,7 @@
  * - endoflife.date + política latest-only SOLO para jQuery
  * - Comparador smart (1.0.1k, 1.1.1t, rc, etc.)
  * - NVD v2 con paginación + AbortController
- * - Usa SOLO window.NVD_API_KEY; si falta, omite CVEs (auditable)
+ * - Usa SOLO window.NVD_API_KEY (config.js). Si no está, omite CVEs (auditable)
  * =======================================================*/
 
 // ---------- Helpers de DOM y estado ----------
@@ -17,14 +17,13 @@ const todayISO = () => new Date().toISOString().slice(0,10);
 
 // ---------- Normalización de “software” a CPE/slug por defecto ----------
 function normalizeName(s) {
-  // minúsculas, recorta y reemplaza espacios consecutivos por '-'
   return String(s || "").trim().toLowerCase().replace(/\s+/g, '-');
 }
 
 // ---------- Parser/Comparador de versiones (smart) ----------
 function parseSmart(versionRaw) {
   const raw = String(versionRaw || "").trim().replace(/^v/i,'');
-  const preCut = raw.split('-')[0]; // remove -rc/-beta for comparison
+  const preCut = raw.split('-')[0];
   const parts = preCut.split('.');
   const out = [];
   for (let p of parts) {
@@ -67,53 +66,54 @@ function inRangeSmart(version, startIncl, startExcl, endIncl, endExcl){
 // ---------- Productos con política “latest-only” documentada ----------
 const LATEST_ONLY = new Set(["jquery"]);
 
-// ---------- endoflife.date ----------
+// ---------- endoflife.date (con preservación de cycle + latest) ----------
 async function fetchEOL(slug, signal){
   const url = `https://endoflife.date/api/v1/products/${encodeURIComponent(slug)}/`;
   const res = await fetch(url, {mode:"cors", signal});
   if (!res.ok) return {ok:false, releases:[]};
+
   const data = await res.json();
   const releases = Array.isArray(data.releases) ? data.releases : (Array.isArray(data) ? data : []);
-  const norm = releases.map(r => {
-    const version = r.version || r.cycle || r.latest || r.release || r.lts || r.codename || "";
-    return { version: String(version || "").trim(), eol: r.eol ?? null };
-  }).filter(r => r.version);
+
+  const norm = releases.map(r => ({
+    rawVersion: r.version ?? null,
+    cycle: (r.cycle != null ? String(r.cycle).trim() : null),
+    latest: (r.latest != null ? String(r.latest).trim() : null),
+    eol: (r.eol ?? null)
+  }))
+  .filter(r => r.cycle || r.rawVersion || r.latest);
+
   return {ok:true, releases: norm};
 }
-
 function isoDateLE(aISO, bISO){ return new Date(aISO) <= new Date(bISO); }
 function isoDateGT(aISO, bISO){ return new Date(aISO) >  new Date(bISO); }
 
 function resolveSupportByPolicy(version, releases, slug){
-  // 1) Entrada exacta
-  const exact = releases.find(r => r.version === version);
-  if (exact && typeof exact.eol === "string") {
-    return isoDateGT(exact.eol, todayISO()) ? "supported" : "eol";
+  const exact = releases.find(r => r.rawVersion && r.rawVersion === version);
+  if (exact) {
+    if (exact.eol === true) return "eol";
+    if (typeof exact.eol === "string") return (new Date(exact.eol) > new Date()) ? "supported" : "eol";
+    return "supported";
   }
-  if (exact && exact.eol === true) return "eol";
-  if (exact && (exact.eol === null || exact.eol === undefined)) return "supported";
 
-  // 2) Herencia por ciclo si aplica (solo latest-only, p.ej. jQuery)
   const key = (slug || "").toLowerCase();
   if (LATEST_ONLY.has(key)) {
-    const targetMajor = (String(version).split('.')[0] || "").trim();
-    const sameMajor = releases
-      .map(r => r.version)
-      .filter(v => (v.split('.')[0] || "") === targetMajor)
-      .sort((a,b)=> cmpSmart(a,b));
-    if (!sameMajor.length) return "unknown";
-    const latestOfMajor = sameMajor[sameMajor.length-1];
-    if (cmpSmart(version, latestOfMajor) === 0) {
-      const rec = releases.find(r => r.version === latestOfMajor);
-      if (rec && rec.eol) {
-        if (rec.eol === true) return "eol";
-        if (typeof rec.eol === "string" && isoDateLE(rec.eol, todayISO())) return "eol";
-      }
-      return "supported";
-    } else {
-      return "eol";
+    const major = String(version).split('.')[0] || "";
+    const cycleRec = releases.find(r => r.cycle === major);
+    if (!cycleRec) return "unknown";
+
+    if (cycleRec.eol === true) return "eol";
+    if (typeof cycleRec.eol === "string" && new Date(cycleRec.eol) <= new Date()) return "eol";
+
+    if (cycleRec.latest) {
+      const cmp = cmpSmart(version, cycleRec.latest);
+      if (cmp === 0) return "supported";
+      if (cmp  <  0) return "eol";
+      if (cmp  >  0) return "unknown";
     }
+    return "unknown";
   }
+
   return "unknown";
 }
 
@@ -121,10 +121,8 @@ function resolveSupportByPolicy(version, releases, slug){
 function hasNVDKey(){
   return typeof window !== "undefined" && typeof window.NVD_API_KEY === "string" && window.NVD_API_KEY.trim().length > 0;
 }
-
 async function fetchAllCVEsByCPE(vendor, product, signal){
   if (!hasNVDKey()){
-    // Sin API key → no consultamos CVEs (auditable)
     return { baseCPE: `cpe:2.3:a:${vendor}:${product}`, cves: [], degraded: true };
   }
   const apiKey = window.NVD_API_KEY.trim();
@@ -150,7 +148,6 @@ async function fetchAllCVEsByCPE(vendor, product, signal){
 
   return { baseCPE, cves: all, degraded: false };
 }
-
 function cvesApplicableStrict(cves, vendor, product, version){
   const baseCPE = `cpe:2.3:a:${vendor}:${product}`.toLowerCase();
   const out = [];
@@ -163,7 +160,7 @@ function cvesApplicableStrict(cves, vendor, product, version){
       if (Array.isArray(node.cpeMatch)) {
         for (const m of node.cpeMatch){
           const name = (m.criteria || m.cpeName || "").toLowerCase();
-          if (!name.startsWith(baseCPE)) continue; // vendor/product exacto
+          if (!name.startsWith(baseCPE)) continue;
           const sI = m.versionStartIncluding, sE = m.versionStartExcluding;
           const eI = m.versionEndIncluding,   eE = m.versionEndExcluding;
           if (!sI && !sE && !eI && !eE) { applies = true; }
@@ -214,7 +211,6 @@ function resetUI() {
   if (classBox) { classBox.className = "classification"; classBox.textContent = ""; }
   const expl = $("#explanation"); if (expl) expl.textContent = "";
 }
-
 function updateCPEPreview() {
   const software = normalizeName($("#software").value);
   const vendor = normalizeName($("#cpeVendor").value) || software;
@@ -222,21 +218,18 @@ function updateCPEPreview() {
   $("#cpePreview").textContent = `cpe:2.3:a:${vendor || "-"}:${product || "-"}`;
 }
 
-// Reactividad (sin autocompletar ni ejemplos)
+// Reactividad
 $("#checker-form").addEventListener("input", updateCPEPreview);
 
-// Submit principal
+// Submit principal (con abortos y “barrido”)
 $("#checker-form").addEventListener("submit", async (e)=>{
   e.preventDefault();
-
-  // cancelar consulta previa
   if (currentAbort) currentAbort.abort();
   currentAbort = new AbortController();
   const { signal } = currentAbort;
 
   resetUI();
 
-  // Normalización de entradas
   const softwareName = $("#software").value;
   const version = $("#version").value.trim();
   const sw = normalizeName(softwareName);
@@ -249,14 +242,17 @@ $("#checker-form").addEventListener("submit", async (e)=>{
   const eol = await fetchEOL(slug, signal).catch(()=>({ok:false,releases:[]}));
   if (eol.ok){
     supportState = resolveSupportByPolicy(version, eol.releases, slug);
-    const allVers = eol.releases.map(r => r.version).filter(Boolean);
-    if (allVers.length){
-      const sorted = allVers.slice().sort((a,b)=> cmpSmart(a,b));
+    // Determinar si hay versión más nueva en el feed (para B vs C)
+    const allCandidates = eol.releases
+      .map(r => r.rawVersion || r.latest) // consideramos latest por si el feed no lista menores
+      .filter(Boolean);
+    if (allCandidates.length){
+      const sorted = allCandidates.slice().sort((a,b)=> cmpSmart(a,b));
       hasNewer = cmpSmart(version, sorted[sorted.length-1]) < 0;
     }
   }
 
-  // 2) NVD (CPE exacto) — con paginación (solo si hay API key inyectada)
+  // 2) NVD (CPE exacto) — con paginación (usa config.js)
   let cves = [];
   let degraded = false;
   try{
@@ -264,7 +260,7 @@ $("#checker-form").addEventListener("submit", async (e)=>{
     degraded = nvd.degraded;
     if (!degraded) cves = cvesApplicableStrict(nvd.cves, vendor, product, version);
   }catch(err){
-    degraded = true; // preferimos omitir CVEs antes que errar
+    degraded = true;
   }
 
   // 3) Clasificación
@@ -297,6 +293,5 @@ $("#checker-form").addEventListener("submit", async (e)=>{
   }
 });
 
-// Inicializar preview en blanco
+// Inicialización
 updateCPEPreview();
-``
