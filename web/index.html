@@ -4,9 +4,27 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>EOL & CVE Checker — Precisión estricta</title>
-  <link rel="stylesheet" href="styles.css" />
+
+  <!-- CSP estricta para app estática -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; connect-src 'self' https://endoflife.date https://services.nvd.nist.gov; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'">
+        content="default-src 'self';
+                 connect-src 'self' https://endoflife.date https://services.nvd.nist.gov;
+                 img-src 'self' data:;
+                 style-src 'self';
+                 script-src 'self';
+                 base-uri 'none';
+                 form-action 'self'">
+
+  <link rel="stylesheet" href="styles.css" />
+
+  <!--
+    Opción Cloudflare Pages: inyectar tu API key como variable pública.
+    Si decidís exponerla (pública), descomentá la línea de abajo y poné tu key.
+    window.NVD_API_KEY = "a0834877-930c-40d2-9c61-afeebf6e08b3";
+  -->
+  <script>
+    // window.NVD_API_KEY = "a0834877-930c-40d2-9c61-afeebf6e08b3";
+  </script>
 </head>
 <body>
   <header>
@@ -21,30 +39,30 @@
         <div class="grid">
           <label>
             Vendor (CPE)
-            <input id="vendor" placeholder="p.ej.: jquery" required>
+            <input id="vendor" placeholder="p.ej.: openssl" required />
           </label>
           <label>
             Product (CPE)
-            <input id="product" placeholder="p.ej.: jquery" required>
+            <input id="product" placeholder="p.ej.: openssl" required />
           </label>
           <label>
             Versión exacta
-            <input id="version" placeholder="p.ej.: 3.6.0" required>
+            <input id="version" placeholder="p.ej.: 1.0.1k" required />
           </label>
           <label>
             endoflife.slug (opcional)
-            <input id="eolSlug" placeholder="p.ej.: jquery">
+            <input id="eolSlug" placeholder="p.ej.: openssl" />
           </label>
           <label>
             NVD API Key (opcional)
-            <input id="nvdKey" placeholder="mejora límite/rate">
+            <input id="nvdKey" placeholder="pegá tu key o dejá vacío si usás la inyectada" />
           </label>
         </div>
 
         <div class="hints">
           <p><strong>CPE base usado:</strong> <code id="cpePreview">cpe:2.3:a:&lt;vendor&gt;:&lt;product&gt;</code></p>
           <p class="note">
-            Política “latest-only” activada para: <code>jquery</code>. Se puede editar en <code>app.js</code>.
+            Política “latest-only” activada para: <code>jquery</code>. Podés editarlo en <code>app.js</code>.
           </p>
         </div>
 
@@ -67,7 +85,7 @@
       <div class="quicktest">
         <button id="btnTest" class="secondary">Completar y evaluar</button>
         <p class="small">
-          Según la política pública de jQuery (“solo la última versión del ciclo está soportada”), 3.6.0 **no** es la última de 3.x (3.7.1 es posterior). [1](https://endoflife.date/jquery)[2](https://jquery.com/support/)
+          Según la política pública de jQuery (“solo la última versión del ciclo está soportada”), 3.6.0 no es la última de 3.x (3.7.1 es posterior).
         </p>
       </div>
     </section>
@@ -75,7 +93,7 @@
 
   <footer>
     <p>
-      <strong>Reglas</strong>: no inferencias, CPE exacto, rangos estrictos, preferir omitir antes que errar.
+      <strong>Reglas:</strong> sin inferencias, CPE exacto, rangos estrictos. Exactitud &gt; cobertura.
     </p>
   </footer>
 
