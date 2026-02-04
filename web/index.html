@@ -21,22 +21,10 @@
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
 
-    h1 {
-      margin-top: 0;
-      color: #222;
-    }
+    h1 { margin-top: 0; color: #222; }
+    .subtitle { color: #666; margin-bottom: 25px; }
 
-    .subtitle {
-      color: #666;
-      margin-bottom: 25px;
-    }
-
-    label {
-      display: block;
-      margin-top: 15px;
-      font-weight: bold;
-    }
-
+    label { display: block; margin-top: 15px; font-weight: bold; }
     input {
       width: 100%;
       padding: 10px;
@@ -58,9 +46,7 @@
       border: 1px solid #ddd;
     }
 
-    .hidden {
-      display: none;
-    }
+    .hidden { display: none; }
 
     .status {
       font-size: 18px;
@@ -89,32 +75,15 @@
       border-radius: 4px;
     }
 
-    .box h3 {
-      margin-top: 0;
-    }
-
-    .cve-group {
-      margin-top: 15px;
-    }
-
+    .cve-group { margin-top: 15px; }
     .cve-item {
       padding: 8px 10px;
       border-bottom: 1px solid #ddd;
       font-size: 14px;
     }
 
-    .cve-item:last-child {
-      border-bottom: none;
-    }
-
-    .cve-id {
-      font-weight: bold;
-    }
-
-    .cve-score {
-      color: #555;
-      margin-left: 5px;
-    }
+    .cve-id { font-weight: bold; }
+    .cve-score { color: #555; margin-left: 5px; }
 
     .footer {
       margin-top: 20px;
@@ -164,113 +133,114 @@
 
       <div class="footer">
         Fuentes: endoflife.date · nvd.nist.gov<br>
-        Versiones de librería de catálogo actualizadas el: <span id="catalogDate"></span>
+        Versiones de librería de catálogo actualizadas el:
+        <span id="catalogDate"></span>
       </div>
     </div>
   </div>
 
-  <script>
-    async function analyze() {
-      const tech = document.getElementById("tech").value.trim();
-      const version = document.getElementById("version").value.trim();
+<script>
+async function analyze() {
+  const tech = document.getElementById("tech").value.trim();
+  const version = document.getElementById("version").value.trim();
 
-      if (!tech || !version) {
-        alert("Debe completar tecnología y versión");
-        return;
-      }
+  if (!tech || !version) {
+    alert("Debe completar tecnología y versión");
+    return;
+  }
 
-      const res = await fetch(`/check?tec=${encodeURIComponent(tech)}&ver=${encodeURIComponent(version)}`);
-      const data = await res.json();
+  const res = await fetch(`/check?tec=${encodeURIComponent(tech)}&ver=${encodeURIComponent(version)}`);
+  const data = await res.json();
+  renderResult(data);
+}
 
-      renderResult(data);
-    }
+function renderResult(data) {
+  document.getElementById("result").classList.remove("hidden");
 
-    function renderResult(data) {
-      document.getElementById("result").classList.remove("hidden");
+  document.getElementById("techTitle").innerText =
+    `${data.tecnologia} ${data.version}`;
 
-      document.getElementById("techTitle").innerText =
-        `${data.tecnologia} ${data.version}`;
+  const badge = document.getElementById("statusBadge");
+  badge.className = "badge";
 
-      const badge = document.getElementById("statusBadge");
-      badge.className = "badge";
+  if (data.estado === "FUERA DE SOPORTE") {
+    badge.classList.add("red");
+    badge.innerText = "FUERA DE SOPORTE";
+  } else if (data.estado === "DESACTUALIZADO") {
+    badge.classList.add("orange");
+    badge.innerText = "DESACTUALIZADO";
+  } else if (data.estado === "SOPORTE NO CONFIRMADO") {
+    badge.classList.add("gray");
+    badge.innerText = "SOPORTE NO CONFIRMADO";
+  } else {
+    badge.classList.add("green");
+    badge.innerText = "CON SOPORTE";
+  }
 
-      if (data.estado === "FUERA DE SOPORTE") {
-        badge.classList.add("red");
-        badge.innerText = "FUERA DE SOPORTE";
-      } else if (data.estado === "DESACTUALIZADO") {
-        badge.classList.add("orange");
-        badge.innerText = "DESACTUALIZADO";
-      } else {
-        badge.classList.add("green");
-        badge.innerText = "CON SOPORTE";
-      }
+  document.getElementById("supportInfo").innerText =
+    data.supportMessage;
 
-      document.getElementById("supportInfo").innerText =
-        data.ciclo?.eol
-          ? `El soporte oficial finalizó el ${data.ciclo.eol}. Se recomienda actualizar.`
-          : "La versión analizada se encuentra dentro del período de soporte.";
+  document.getElementById("currentVersion").innerText = data.version;
+  document.getElementById("latestVersion").innerText =
+    data.latestSupportedVersion && data.latestSupportedVersion !== "-"
+      ? data.latestSupportedVersion
+      : "No disponible";
 
-      document.getElementById("currentVersion").innerText = data.version;
-      document.getElementById("latestVersion").innerText =
-        data.latestSupportedVersion && data.latestSupportedVersion !== "-"
-          ? data.latestSupportedVersion
-          : "No disponible";
+  document.getElementById("cveSummary").innerText =
+    `Total: ${data.resumen.total} | Críticas: ${data.resumen.critical} | Altas: ${data.resumen.high}`;
 
-      document.getElementById("cveSummary").innerText =
-        `Total: ${data.resumen.total} | Críticas: ${data.resumen.critical} | Altas: ${data.resumen.high}`;
+  document.getElementById("catalogDate").innerText = data.catalogUpdate;
 
-      document.getElementById("catalogDate").innerText = data.catalogUpdate;
+  renderCVEs(data.cves || []);
+}
 
-      renderCVEs(data.cves || []);
-    }
+function renderCVEs(cves) {
+  const container = document.getElementById("cveList");
+  container.innerHTML = "";
 
-    function renderCVEs(cves) {
-      const container = document.getElementById("cveList");
-      container.innerHTML = "";
+  if (cves.length === 0) {
+    container.innerHTML = "<p>No se encontraron vulnerabilidades conocidas.</p>";
+    return;
+  }
 
-      if (cves.length === 0) {
-        container.innerHTML = "<p>No se encontraron vulnerabilidades conocidas.</p>";
-        return;
-      }
+  const order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
 
-      const order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
+  order.forEach(level => {
+    const group = cves.filter(c => c.severity === level);
+    if (!group.length) return;
 
-      order.forEach(level => {
-        const group = cves.filter(c => c.severity === level);
-        if (group.length === 0) return;
+    const div = document.createElement("div");
+    div.className = "cve-group";
 
-        const div = document.createElement("div");
-        div.className = "cve-group";
+    const title = document.createElement("h4");
+    title.innerText = `${level} (${group.length})`;
+    div.appendChild(title);
 
-        const title = document.createElement("h4");
-        title.innerText = `${level} (${group.length})`;
-        div.appendChild(title);
+    group.forEach(cve => {
+      const item = document.createElement("div");
+      item.className = "cve-item";
 
-        group.forEach(cve => {
-          const item = document.createElement("div");
-          item.className = "cve-item";
+      item.innerHTML = `
+        <span class="cve-id">${cve.id}</span>
+        <span class="badge ${severityColor(cve.severity)}">${cve.severity}</span>
+        ${cve.score ? `<span class="cve-score">Score: ${cve.score}</span>` : ""}
+        · <a href="${cve.url}" target="_blank">Ver NVD</a>
+      `;
 
-          item.innerHTML = `
-            <span class="cve-id">${cve.id}</span>
-            <span class="badge ${severityColor(cve.severity)}">${cve.severity}</span>
-            ${cve.score ? `<span class="cve-score">Score: ${cve.score}</span>` : ""}
-            · <a href="${cve.url}" target="_blank">Ver NVD</a>
-          `;
+      div.appendChild(item);
+    });
 
-          div.appendChild(item);
-        });
+    container.appendChild(div);
+  });
+}
 
-        container.appendChild(div);
-      });
-    }
-
-    function severityColor(sev) {
-      if (sev === "CRITICAL") return "red";
-      if (sev === "HIGH") return "orange";
-      if (sev === "MEDIUM") return "gray";
-      if (sev === "LOW") return "green";
-      return "gray";
-    }
-  </script>
+function severityColor(sev) {
+  if (sev === "CRITICAL") return "red";
+  if (sev === "HIGH") return "orange";
+  if (sev === "MEDIUM") return "gray";
+  if (sev === "LOW") return "green";
+  return "gray";
+}
+</script>
 </body>
 </html>
