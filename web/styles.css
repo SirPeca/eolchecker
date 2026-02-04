@@ -1,7 +1,6 @@
 :root{
   --bg:#0f1221; --card:#171a2e; --muted:#a9b0c6; --text:#e8ecff;
-  --accent:#68e1fd; --accent2:#8df4c9; --danger:#ff6b6b; --warn:#ffd166;
-  --ok:#7bd88f;
+  --accent:#68e1fd; --accent2:#8df4c9; --warn:#ffd166; --ok:#7bd88f;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -25,12 +24,10 @@ input{
   padding:.65rem .75rem; border-radius:10px; outline:none
 }
 input:focus{border-color:#3d69ff}
-.hints{margin-top:.5rem; color:var(--muted); font-size:.95rem}
-.primary, .secondary{
-  border:0; padding:.75rem 1rem; border-radius:10px; cursor:pointer; font-weight:700
+.primary{
+  border:0; padding:.75rem 1rem; border-radius:10px; cursor:pointer; font-weight:700;
+  background:linear-gradient(90deg, var(--accent), var(--accent2)); color:#09111a
 }
-.primary{background:linear-gradient(90deg, var(--accent), var(--accent2)); color:#09111a}
-.secondary{background:#22284f; color:var(--text); border:1px solid #2f3464}
 .hidden{display:none}
 .classification{
   font-size:1.2rem; font-weight:800; margin-bottom:.5rem; padding:.6rem .8rem; border-radius:10px
@@ -42,5 +39,5 @@ input:focus{border-color:#3d69ff}
 .cve-list h3{margin-top:1rem}
 .cve-list li{margin:.35rem 0; line-height:1.4}
 .small{color:var(--muted); font-size:.9rem}
+.advanced summary{cursor:pointer; user-select:none; color:var(--muted); margin:.25rem 0 .5rem}
 @media (max-width:720px){ .grid{grid-template-columns:1fr} }
-``
