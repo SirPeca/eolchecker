@@ -5,80 +5,180 @@
   <title>EOL & CVE Checker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Toastr -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css"/>
-
   <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+      --danger: #f87171;
+      --ok: #4ade80;
+      --border: #1f2937;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
     body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont;
-      background: #0f172a;
-      color: #e5e7eb;
-      padding: 40px;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
     }
+
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+
     h1 {
-      margin-bottom: 20px;
+      font-size: 1.8rem;
+      margin-bottom: 4px;
     }
-    .card {
-      background: #020617;
+
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
       padding: 20px;
-      border-radius: 10px;
-      max-width: 700px;
+      margin-bottom: 24px;
     }
-    label {
-      display: block;
-      margin-top: 10px;
+
+    .form {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 12px;
     }
-    input, button {
-      width: 100%;
-      padding: 10px;
-      margin-top: 5px;
+
+    input {
+      background: #020617;
+      border: 1px solid var(--border);
       border-radius: 6px;
-      border: none;
-      font-size: 16px;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 0.95rem;
     }
+
+    input::placeholder {
+      color: var(--muted);
+    }
+
     button {
-      margin-top: 20px;
-      background: #2563eb;
-      color: white;
+      background: var(--accent);
+      color: #020617;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-weight: 600;
       cursor: pointer;
     }
-    button:hover {
-      background: #1d4ed8;
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
-    .result {
-      margin-top: 30px;
+
+    .status {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
     }
+
+    .badge {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .badge.unknown {
+      background: #374151;
+      color: var(--text);
+    }
+
+    .badge.ok {
+      background: rgba(74, 222, 128, 0.15);
+      color: var(--ok);
+    }
+
+    .badge.eol {
+      background: rgba(248, 113, 113, 0.15);
+      color: var(--danger);
+    }
+
+    .message {
+      color: var(--muted);
+      margin-top: 12px;
+    }
+
     .cve {
-      background: #020617;
-      border-left: 4px solid #ef4444;
-      padding: 10px;
-      margin-top: 10px;
-      border-radius: 6px;
+      border-top: 1px solid var(--border);
+      padding: 14px 0;
+    }
+
+    .cve:first-child {
+      border-top: none;
+    }
+
+    .cve-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .cve-id {
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .cvss {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .loading {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    .error {
+      color: var(--danger);
     }
   </style>
 </head>
-
 <body>
+  <div class="container">
+    <h1>EOL & CVE Checker</h1>
+    <div class="subtitle">
+      Verificación de soporte y vulnerabilidades para aplicaciones web
+    </div>
 
-  <h1>EOL & CVE Checker</h1>
+    <div class="panel">
+      <div class="form">
+        <input id="product" placeholder="Producto / tecnología (ej: jquery, nginx)" />
+        <input id="version" placeholder="Versión (ej: 3.5.1)" />
+        <button id="checkBtn">Consultar</button>
+      </div>
+      <div id="formMessage" class="message"></div>
+    </div>
 
-  <div class="card">
-    <label>Tecnología</label>
-    <input id="product" placeholder="jquery, openssl, nginx" />
+    <div id="results" class="panel" style="display:none;">
+      <div class="status">
+        <div id="supportBadge" class="badge unknown">Support: Unknown</div>
+      </div>
 
-    <label>Versión</label>
-    <input id="version" placeholder="3.7.1" />
-
-    <button onclick="analyze()">Analizar</button>
-
-    <div id="output" class="result"></div>
+      <div id="cveList"></div>
+    </div>
   </div>
 
-  <!-- Libs -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.30.1/moment.min.js"></script>
-
-  <script src="./app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
