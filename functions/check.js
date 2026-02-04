@@ -1,22 +1,18 @@
-export async function onRequest(context) {
-  const url = new URL(context.request.url);
+export async function onRequest({ request }) {
+  const url = new URL(request.url);
   const tech = url.searchParams.get("tec");
   const version = url.searchParams.get("ver");
 
   if (!tech || !version) {
-    return new Response(
-      JSON.stringify({ error: "Faltan parámetros" }),
-      { status: 400 }
-    );
+    return json({ error: "Faltan parámetros" }, 400);
   }
 
-  // ===============================
-  // 1. END OF LIFE
-  // ===============================
-  let support = {
+  // =========================
+  // SOPORTE (endoflife.date)
+  // =========================
+  let soporte = {
     estado: "SOPORTE NO CONFIRMADO",
-    latest: "-",
-    eol: null
+    latest: "-"
   };
 
   try {
@@ -24,67 +20,62 @@ export async function onRequest(context) {
     if (eolRes.ok) {
       const data = await eolRes.json();
       const latest = data.find(d => d.latest)?.latest;
-      const match = data.find(d => d.cycle === version.split(".")[0]);
-
-      support.latest = latest || "-";
-
-      if (match?.eol && new Date(match.eol) < new Date()) {
-        support.estado = "FUERA DE SOPORTE";
-        support.eol = match.eol;
-      } else {
-        support.estado = "CON SOPORTE";
-      }
+      soporte.latest = latest || "-";
+      soporte.estado = "CON SOPORTE";
     }
-  } catch (_) {}
+  } catch {}
 
-  // ===============================
-  // 2. CVE – SOLO APLICABLES
-  // ===============================
-  const cveAplicables = [];
+  // =========================
+  // CVE – SOLO CPE EXACTO
+  // =========================
+  const cves = [];
 
   try {
     const nvdRes = await fetch(
-      `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${tech}`
+      "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=2000"
     );
     const nvd = await nvdRes.json();
 
-    for (const item of nvd.vulnerabilities || []) {
-      const cve = item.cve;
-      const configs = cve.configurations || [];
+    for (const v of nvd.vulnerabilities || []) {
+      const cve = v.cve;
 
-      for (const conf of configs) {
+      for (const conf of cve.configurations || []) {
         for (const node of conf.nodes || []) {
           for (const match of node.cpeMatch || []) {
-            if (!match.versionStartIncluding && !match.versionEndExcluding) continue;
 
-            const start = match.versionStartIncluding || "0";
-            const end = match.versionEndExcluding || "9999";
+            if (
+              match.vulnerable === true &&
+              match.criteria.includes(`:${tech}:`) &&
+              match.criteria.endsWith(`:${version}`)
+            ) {
+              const cvss =
+                cve.metrics?.cvssMetricV31?.[0]?.cvssData ||
+                cve.metrics?.cvssMetricV30?.[0]?.cvssData ||
+                null;
 
-            if (version >= start && version < end) {
-              cveAplicables.push({
+              cves.push({
                 id: cve.id,
-                score: cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore || "N/A",
-                severity: cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity || "UNKNOWN"
+                severity: cvss?.baseSeverity || "UNKNOWN",
+                score: cvss?.baseScore || "N/A"
               });
             }
           }
         }
       }
     }
-  } catch (_) {}
+  } catch {}
 
-  // Deduplicar
-  const unique = Object.values(
-    Object.fromEntries(cveAplicables.map(c => [c.id, c]))
-  );
+  return json({
+    tecnologia: tech,
+    version,
+    soporte,
+    cves
+  });
+}
 
-  return new Response(
-    JSON.stringify({
-      tecnologia: tech,
-      version,
-      soporte: support,
-      cves: unique
-    }),
-    { headers: { "Content-Type": "application/json" } }
-  );
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  });
 }
