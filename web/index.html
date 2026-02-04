@@ -1,70 +1,119 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<title>Checker de Soporte & CVEs</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
-<style>
-body { font-family: system-ui; background:#0f172a; color:#e5e7eb; padding:2rem; }
-.card { background:#020617; padding:1.5rem; border-radius:10px; max-width:900px; margin:auto; }
-input,button { padding:.6rem; width:100%; margin-top:.5rem; border-radius:6px; border:none; }
-button { background:#2563eb; color:white; font-weight:bold; cursor:pointer; }
-button:hover { background:#1e40af; }
-.tag { padding:.2rem .5rem; border-radius:5px; font-size:.8rem; }
-.CRITICAL{background:#dc2626} .HIGH{background:#f97316}
-.MEDIUM{background:#eab308} .LOW{background:#22c55e}
-.ok{color:#22c55e} .warn{color:#f97316} .bad{color:#dc2626}
-</style>
+  <meta charset="UTF-8" />
+  <title>EOL & CVE Checker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f6f8;
+      color: #222;
+      margin: 0;
+      padding: 30px;
+    }
+    h1 {
+      margin-bottom: 5px;
+    }
+    .subtitle {
+      color: #555;
+      margin-bottom: 25px;
+    }
+    .box {
+      background: #fff;
+      padding: 20px;
+      border-radius: 6px;
+      max-width: 900px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 20px;
+      padding: 10px 18px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    pre {
+      background: #111;
+      color: #0f0;
+      padding: 15px;
+      margin-top: 20px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    .footer {
+      margin-top: 15px;
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
 </head>
-
 <body>
-<div class="card">
-<h2>Checker de soporte y CVEs</h2>
 
-<input id="tec" placeholder="Tecnología (ej: openssl)">
-<input id="ver" placeholder="Versión (ej: 1.0.1)">
-<button onclick="check()">Consultar</button>
+  <h1>EOL & CVE Checker</h1>
+  <div class="subtitle">
+    Evaluación de soporte, obsolescencia y vulnerabilidades conocidas
+  </div>
 
-<div id="out" style="margin-top:1rem"></div>
-</div>
+  <div class="box">
+    <label for="tech">Tecnología</label>
+    <input id="tech" placeholder="Ej: jquery, openssl, bootstrap" />
 
-<script>
-async function check(){
-  const tec = tecInput.value.trim();
-  const ver = verInput.value.trim();
-  out.innerHTML = "<em>Consultando...</em>";
+    <label for="version">Versión</label>
+    <input id="version" placeholder="Ej: 3.6.0, 1.0.1, 5.3.2" />
 
-  try {
-    const r = await fetch(`/check?tec=${encodeURIComponent(tec)}&ver=${encodeURIComponent(ver)}`);
-    const j = await r.json();
-    if(!r.ok) throw j;
+    <button onclick="runCheck()">Analizar</button>
 
-    const statusClass =
-      j.estado==="CON SOPORTE"?"ok":
-      j.estado==="DESACTUALIZADO"?"warn":"bad";
+    <pre id="output">Esperando análisis…</pre>
 
-    out.innerHTML = `
-      <p class="${statusClass}"><b>${j.estado}</b></p>
-      <p>Última versión publicada: ${j.latestVersion || "-"}</p>
-      <p>Última versión con soporte: ${j.latestSupportedVersion || "-"}</p>
-      <p>Total CVEs: ${j.resumen.total} | CRITICAL: ${j.resumen.critical} | HIGH: ${j.resumen.high}</p>
-      <ul>
-        ${j.cves.map(c=>`
-          <li>
-            <span class="tag ${c.severity}">${c.severity}</span>
-            <a href="${c.url}" target="_blank">${c.id}</a>
-          </li>`).join("")}
-      </ul>
-    `;
-  } catch(e){
-    out.innerHTML = `<span class="bad">Error</span>`;
-  }
-}
+    <div class="footer">
+      Fuentes: endoflife.date · nvd.nist.gov
+    </div>
+  </div>
 
-const tecInput=document.getElementById("tec");
-const verInput=document.getElementById("ver");
-const out=document.getElementById("out");
-</script>
+  <script>
+    async function runCheck() {
+      const tech = document.getElementById("tech").value.trim();
+      const version = document.getElementById("version").value.trim();
+      const output = document.getElementById("output");
+
+      if (!tech || !version) {
+        output.textContent =
+          "Error: Debe especificar tecnología y versión para continuar.";
+        return;
+      }
+
+      output.textContent = "Analizando información…";
+
+      try {
+        const res = await fetch(
+          `/check?tec=${encodeURIComponent(tech)}&ver=${encodeURIComponent(version)}`
+        );
+
+        if (!res.ok) {
+          output.textContent =
+            "Error: No se pudo obtener una respuesta válida del servicio.";
+          return;
+        }
+
+        const data = await res.json();
+        output.textContent = JSON.stringify(data, null, 2);
+      } catch (e) {
+        output.textContent =
+          "Error inesperado durante el análisis. Intente nuevamente.";
+      }
+    }
+  </script>
+
 </body>
 </html>
