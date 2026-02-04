@@ -1,4 +1,6 @@
-import semver from "semver";
+// ============================================================
+// EOL & CVE Checker — Cloudflare Pages compatible
+// ============================================================
 
 const CATALOG_UPDATE_DATE = "2026-02-03";
 
@@ -31,9 +33,31 @@ function response(data, status = 200) {
   });
 }
 
+// ---------- Version utils (sin librerías) ----------
+function normalizeVersion(v) {
+  return v.split(".").map(n => parseInt(n, 10) || 0);
+}
+
+function compareVersions(a, b) {
+  const va = normalizeVersion(a);
+  const vb = normalizeVersion(b);
+  const len = Math.max(va.length, vb.length);
+
+  for (let i = 0; i < len; i++) {
+    const diff = (va[i] || 0) - (vb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function isBetween(version, min, max) {
+  if (min && compareVersions(version, min) < 0) return false;
+  if (max && compareVersions(version, max) > 0) return false;
+  return true;
+}
+
 /**
- * Determina si un CVE aplica a la versión
- * true  -> aplica
+ * true  -> CVE aplica
  * false -> no aplica
  * null  -> rango no especificado (riesgo potencial)
  */
@@ -48,22 +72,15 @@ function cveApplies(cpe, version) {
 
   if (!hasRange) return null;
 
-  let min = "0.0.0";
-  let max = "9999.9999.9999";
+  let min = null;
+  let max = null;
 
-  if (cpe.versionStartIncluding)
-    min = cpe.versionStartIncluding;
+  if (cpe.versionStartIncluding) min = cpe.versionStartIncluding;
+  if (cpe.versionStartExcluding) min = cpe.versionStartExcluding;
+  if (cpe.versionEndIncluding) max = cpe.versionEndIncluding;
+  if (cpe.versionEndExcluding) max = cpe.versionEndExcluding;
 
-  if (cpe.versionStartExcluding)
-    min = semver.inc(cpe.versionStartExcluding, "patch");
-
-  if (cpe.versionEndIncluding)
-    max = cpe.versionEndIncluding;
-
-  if (cpe.versionEndExcluding)
-    max = semver.dec(cpe.versionEndExcluding);
-
-  return semver.gte(version, min) && semver.lte(version, max);
+  return isBetween(version, min, max);
 }
 
 // ================= HANDLER =================
@@ -108,8 +125,8 @@ export async function onRequest({ request }) {
     } catch {}
 
     // ---------- CVEs ----------
-    let applicable = [];
-    let potential = [];
+    let aplicables = [];
+    let potenciales = [];
 
     try {
       const cveRes = await fetch(
@@ -147,13 +164,12 @@ export async function onRequest({ request }) {
             url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
           };
 
-          if (applies) applicable.push(item);
-          else if (unknown) potential.push(item);
+          if (applies) aplicables.push(item);
+          else if (unknown) potenciales.push(item);
         }
       }
     } catch {}
 
-    // ---------- RESPUESTA ----------
     return response({
       tecnologia: techRaw,
       version,
@@ -161,12 +177,12 @@ export async function onRequest({ request }) {
       ciclo,
       latestSupportedVersion,
       cves: {
-        aplicables: applicable,
-        riesgoPotencial: potential
+        aplicables,
+        riesgoPotencial: potenciales
       },
       resumen: {
-        aplicables: applicable.length,
-        riesgoPotencial: potential.length
+        aplicables: aplicables.length,
+        riesgoPotencial: potenciales.length
       },
       fuentes: ["endoflife.date", "nvd.nist.gov"],
       catalogUpdate: CATALOG_UPDATE_DATE
