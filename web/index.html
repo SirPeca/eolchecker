@@ -3,60 +3,72 @@
 <head>
 <meta charset="UTF-8">
 <title>EOL & CVE Checker</title>
+
 <style>
-body { font-family: Arial; background:#f5f6f7 }
-.container { max-width:900px; margin:40px auto; background:#fff; padding:30px; border-radius:8px }
-.badge { padding:5px 10px; border-radius:4px; color:#fff; font-size:13px }
-.green{background:#2e7d32} .red{background:#c62828} .gray{background:#555}
-.cve{margin:5px 0;padding:6px;border-bottom:1px solid #eee}
+body { font-family: Arial; background:#f4f6f8 }
+.container {
+  max-width: 900px;
+  margin: 40px auto;
+  background: #fff;
+  padding: 30px;
+  border-radius: 8px;
+}
+.badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+}
+.green { background:#2e7d32 }
+.gray { background:#666 }
+.cve { padding:6px 0; border-bottom:1px solid #eee }
 </style>
 </head>
+
 <body>
 <div class="container">
 <h2>EOL & CVE Checker</h2>
 
-<label>Tecnología</label>
+<label>Tecnología</label><br>
 <input id="tech"><br><br>
 
-<label>Versión</label>
+<label>Versión</label><br>
 <input id="ver"><br><br>
 
-<button onclick="analyze()">Analizar</button>
+<button onclick="run()">Analizar</button>
 
 <div id="out"></div>
 </div>
 
 <script>
-async function analyze(){
-  const tech=document.getElementById("tech").value;
-  const ver=document.getElementById("ver").value;
-  const out=document.getElementById("out");
+async function run() {
+  const tech = techInput.value;
+  const ver = verInput.value;
+  out.innerHTML = "Analizando…";
 
-  out.innerHTML="Consultando...";
+  const res = await fetch(`/check?tec=${tech}&ver=${ver}`);
+  const d = await res.json();
 
-  const r=await fetch(`/check?tec=${tech}&ver=${ver}`);
-  const d=await r.json();
-
-  let badge="gray";
-  if(d.soporte.estado==="CON SOPORTE") badge="green";
-  if(d.soporte.estado==="FUERA DE SOPORTE") badge="red";
-
-  out.innerHTML=`
+  out.innerHTML = `
     <h3>${d.tecnologia} ${d.version}
-      <span class="badge ${badge}">${d.soporte.estado}</span>
+      <span class="badge green">${d.soporte.estado}</span>
     </h3>
-
     <p><b>Última versión conocida:</b> ${d.soporte.latest}</p>
 
     <h4>Vulnerabilidades aplicables</h4>
-    ${d.cves.length===0
-      ? "<p>✔ No se detectaron CVE aplicables a esta versión.</p>"
+    ${
+      d.cves.length === 0
+      ? "<p>✔ No existen CVE oficialmente asociadas a esta versión.</p>"
       : d.cves.map(c =>
         `<div class="cve">${c.id} — ${c.severity} (${c.score})</div>`
       ).join("")
     }
   `;
 }
+
+const techInput = document.getElementById("tech");
+const verInput = document.getElementById("ver");
+const out = document.getElementById("out");
 </script>
 </body>
 </html>
