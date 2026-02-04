@@ -21,41 +21,29 @@
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
 
-    h1 { margin-top: 0; color: #222; }
-    .subtitle { color: #666; margin-bottom: 25px; }
+    h1 { margin-top: 0; }
+    .subtitle { color: #666; margin-bottom: 20px; }
 
-    label { display: block; margin-top: 15px; font-weight: bold; }
-    input {
-      width: 100%;
-      padding: 10px;
-      margin-top: 5px;
-      font-size: 14px;
-    }
+    label { font-weight: bold; display: block; margin-top: 15px; }
+    input { width: 100%; padding: 10px; margin-top: 5px; }
 
     button {
       margin-top: 20px;
       padding: 10px 20px;
-      font-size: 15px;
       cursor: pointer;
-    }
-
-    .result {
-      margin-top: 30px;
-      padding: 20px;
-      border-radius: 6px;
-      border: 1px solid #ddd;
+      font-size: 15px;
     }
 
     .hidden { display: none; }
 
-    .status {
-      font-size: 18px;
-      font-weight: bold;
-      margin-bottom: 10px;
+    .result {
+      margin-top: 30px;
+      border: 1px solid #ddd;
+      padding: 20px;
+      border-radius: 6px;
     }
 
     .badge {
-      display: inline-block;
       padding: 4px 10px;
       border-radius: 4px;
       color: #fff;
@@ -75,15 +63,13 @@
       border-radius: 4px;
     }
 
-    .cve-group { margin-top: 15px; }
     .cve-item {
-      padding: 8px 10px;
       border-bottom: 1px solid #ddd;
+      padding: 8px 0;
       font-size: 14px;
     }
 
-    .cve-id { font-weight: bold; }
-    .cve-score { color: #555; margin-left: 5px; }
+    .cve-item:last-child { border-bottom: none; }
 
     .footer {
       margin-top: 20px;
@@ -97,135 +83,126 @@
   <div class="container">
     <h1>EOL & CVE Checker</h1>
     <div class="subtitle">
-      Evaluación de soporte, obsolescencia y vulnerabilidades conocidas
+      Evaluación de soporte y vulnerabilidades conocidas
     </div>
 
     <label>Tecnología</label>
-    <input id="tech" placeholder="Ej: angular, jquery, openssl" />
+    <input id="tech" placeholder="Ej: jquery, toastr, openssl" />
 
     <label>Versión</label>
-    <input id="version" placeholder="Ej: 16.2" />
+    <input id="version" placeholder="Ej: 3.7.1" />
 
     <button onclick="analyze()">Analizar</button>
 
     <div id="result" class="result hidden">
-      <div class="status">
+      <h2>
         <span id="techTitle"></span>
-        <span id="statusBadge" class="badge"></span>
+        <span id="statusBadge" class="badge gray">—</span>
+      </h2>
+
+      <div class="box">
+        <strong>Estado de soporte</strong>
+        <p id="supportInfo">—</p>
       </div>
 
       <div class="box">
-        <h3>Estado de soporte</h3>
-        <p id="supportInfo"></p>
+        <strong>Última versión con soporte</strong>
+        <p id="latestVersion">—</p>
       </div>
 
       <div class="box">
-        <h3>Versiones</h3>
-        <p><strong>Versión analizada:</strong> <span id="currentVersion"></span></p>
-        <p><strong>Última versión con soporte:</strong> <span id="latestVersion"></span></p>
-      </div>
-
-      <div class="box">
-        <h3>Vulnerabilidades conocidas</h3>
-        <p id="cveSummary"></p>
+        <strong>Vulnerabilidades (CVE)</strong>
+        <p id="cveSummary">—</p>
         <div id="cveList"></div>
       </div>
 
       <div class="footer">
         Fuentes: endoflife.date · nvd.nist.gov<br>
-        Versiones de librería de catálogo actualizadas el:
-        <span id="catalogDate"></span>
+        Catálogo actualizado: <span id="catalogDate">—</span>
       </div>
     </div>
   </div>
 
-<script>
-async function analyze() {
-  const tech = document.getElementById("tech").value.trim();
-  const version = document.getElementById("version").value.trim();
+  <script>
+    async function analyze() {
+      const tech = document.getElementById("tech").value.trim();
+      const version = document.getElementById("version").value.trim();
 
-  if (!tech || !version) {
-    alert("Debe completar tecnología y versión");
-    return;
-  }
+      if (!tech || !version) {
+        alert("Complete tecnología y versión");
+        return;
+      }
 
-  const res = await fetch(`/check?tec=${encodeURIComponent(tech)}&ver=${encodeURIComponent(version)}`);
-  const data = await res.json();
-  renderResult(data);
-}
+      const result = document.getElementById("result");
+      result.classList.add("hidden");
 
-function renderResult(data) {
-  document.getElementById("result").classList.remove("hidden");
+      try {
+        const res = await fetch(
+          `/check?tec=${encodeURIComponent(tech)}&ver=${encodeURIComponent(version)}`
+        );
+        const data = await res.json();
+        render(data);
+      } catch {
+        alert("Error consultando el servicio");
+      }
+    }
 
-  document.getElementById("techTitle").innerText =
-    `${data.tecnologia} ${data.version}`;
+    function render(data) {
+      const result = document.getElementById("result");
+      result.classList.remove("hidden");
 
-  const badge = document.getElementById("statusBadge");
-  badge.className = "badge";
+      document.getElementById("techTitle").innerText =
+        (data.tecnologia || "Tecnología") + " " + (data.version || "");
 
-  if (data.estado === "FUERA DE SOPORTE") {
-    badge.classList.add("red");
-    badge.innerText = "FUERA DE SOPORTE";
-  } else if (data.estado === "CON SOPORTE") {
-    badge.classList.add("green");
-    badge.innerText = "CON SOPORTE";
-  } else {
-    badge.classList.add("gray");
-    badge.innerText = "SOPORTE NO CONFIRMADO";
-  }
+      const badge = document.getElementById("statusBadge");
+      badge.className = "badge";
 
-  document.getElementById("supportInfo").innerText =
-    data.ciclo?.eol
-      ? `El soporte oficial finaliza el ${data.ciclo.eol}.`
-      : "No existe información oficial de soporte para esta tecnología.";
+      if (data.estado === "FUERA DE SOPORTE") {
+        badge.classList.add("red");
+        badge.innerText = "FUERA DE SOPORTE";
+      } else if (data.estado === "CON SOPORTE") {
+        badge.classList.add("green");
+        badge.innerText = "CON SOPORTE";
+      } else {
+        badge.classList.add("gray");
+        badge.innerText = "SOPORTE NO CONFIRMADO";
+      }
 
-  document.getElementById("currentVersion").innerText = data.version;
-  document.getElementById("latestVersion").innerText =
-    data.latestSupportedVersion !== "-" ? data.latestSupportedVersion : "No disponible";
+      document.getElementById("supportInfo").innerText =
+        data.ciclo?.eol
+          ? "Soporte finalizado el " + data.ciclo.eol
+          : data.estado || "No disponible";
 
-  document.getElementById("cveSummary").innerText =
-    `Aplicables: ${data.resumen.aplicables} | Riesgo potencial: ${data.resumen.riesgoPotencial}`;
+      document.getElementById("latestVersion").innerText =
+        data.latestSupportedVersion || "No disponible";
 
-  document.getElementById("catalogDate").innerText = data.catalogUpdate;
+      document.getElementById("catalogDate").innerText =
+        data.catalogUpdate || "—";
 
-  renderCVEs(
-    data.cves.aplicables,
-    data.cves.riesgoPotencial
-  );
-}
+      const cves = Array.isArray(data.cves) ? data.cves : [];
+      document.getElementById("cveSummary").innerText =
+        "Total: " + cves.length;
 
-function renderCVEs(aplicables, potenciales) {
-  const container = document.getElementById("cveList");
-  container.innerHTML = "";
+      const list = document.getElementById("cveList");
+      list.innerHTML = "";
 
-  if (aplicables.length === 0) {
-    container.innerHTML =
-      "<p><strong>No se identificaron vulnerabilidades que apliquen a esta versión.</strong></p>";
-  } else {
-    container.innerHTML += "<h4>Vulnerabilidades aplicables</h4>";
-    aplicables.forEach(cve => {
-      container.innerHTML += `
-        <div class="cve-item">
-          <span class="cve-id">${cve.id}</span>
-          <span class="badge red">${cve.severity}</span>
-          ${cve.score ? `<span class="cve-score">Score: ${cve.score}</span>` : ""}
-          · <a href="${cve.url}" target="_blank">Ver NVD</a>
-        </div>`;
-    });
-  }
+      cves.slice(0, 20).forEach(cve => {
+        const div = document.createElement("div");
+        div.className = "cve-item";
+        div.innerHTML =
+          "<strong>" + cve.id + "</strong> · " +
+          (cve.severity || "UNKNOWN") +
+          (cve.score ? " · Score " + cve.score : "") +
+          ' · <a href="' + cve.url + '" target="_blank">NVD</a>';
+        list.appendChild(div);
+      });
 
-  if (potenciales.length > 0) {
-    container.innerHTML += "<h4>Riesgo potencial (sin rango de versión declarado)</h4>";
-    potenciales.forEach(cve => {
-      container.innerHTML += `
-        <div class="cve-item">
-          <span class="cve-id">${cve.id}</span>
-          <span class="badge gray">${cve.severity}</span>
-          · <a href="${cve.url}" target="_blank">Ver NVD</a>
-        </div>`;
-    });
-  }
-}
-</script>
+      if (cves.length > 20) {
+        const more = document.createElement("div");
+        more.innerText = "Mostrando 20 de " + cves.length + " CVE";
+        list.appendChild(more);
+      }
+    }
+  </script>
 </body>
 </html>
