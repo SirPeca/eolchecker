@@ -3,206 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <title>EOL & CVE Checker</title>
-
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f6f7;
-      margin: 0;
-      padding: 0;
-    }
-
-    .container {
-      max-width: 900px;
-      margin: 40px auto;
-      background: #ffffff;
-      padding: 30px;
-      border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    }
-
-    h1 { margin-top: 0; }
-    .subtitle { color: #666; margin-bottom: 20px; }
-
-    label { font-weight: bold; display: block; margin-top: 15px; }
-    input { width: 100%; padding: 10px; margin-top: 5px; }
-
-    button {
-      margin-top: 20px;
-      padding: 10px 20px;
-      cursor: pointer;
-      font-size: 15px;
-    }
-
-    .hidden { display: none; }
-
-    .result {
-      margin-top: 30px;
-      border: 1px solid #ddd;
-      padding: 20px;
-      border-radius: 6px;
-    }
-
-    .badge {
-      padding: 4px 10px;
-      border-radius: 4px;
-      color: #fff;
-      font-size: 13px;
-      margin-left: 10px;
-    }
-
-    .red { background: #c62828; }
-    .orange { background: #ef6c00; }
-    .green { background: #2e7d32; }
-    .gray { background: #616161; }
-
-    .box {
-      margin-top: 15px;
-      padding: 15px;
-      background: #f9f9f9;
-      border-radius: 4px;
-    }
-
-    .cve-item {
-      border-bottom: 1px solid #ddd;
-      padding: 8px 0;
-      font-size: 14px;
-    }
-
-    .cve-item:last-child { border-bottom: none; }
-
-    .footer {
-      margin-top: 20px;
-      font-size: 12px;
-      color: #666;
-    }
+    body { font-family: Arial, sans-serif; background:#f5f5f5; }
+    .box { background:#fff; padding:20px; max-width:800px; margin:40px auto; border-radius:6px; }
+    input, button { padding:8px; margin:5px 0; width:100%; }
+    .badge { display:inline-block; padding:4px 8px; border-radius:4px; font-size:12px; }
+    .ok { background:#2ecc71; color:#fff; }
+    .warn { background:#f39c12; color:#fff; }
+    .crit { background:#e74c3c; color:#fff; }
+    ul { padding-left:20px; }
   </style>
 </head>
-
 <body>
-  <div class="container">
-    <h1>EOL & CVE Checker</h1>
-    <div class="subtitle">
-      Evaluación de soporte y vulnerabilidades conocidas
-    </div>
+<div class="box">
+  <h2>EOL & CVE Checker</h2>
 
-    <label>Tecnología</label>
-    <input id="tech" placeholder="Ej: jquery, toastr, openssl" />
+  <label>Tecnología</label>
+  <input id="tech" value="jquery" />
 
-    <label>Versión</label>
-    <input id="version" placeholder="Ej: 3.7.1" />
+  <label>Versión</label>
+  <input id="version" value="3.7.1" />
 
-    <button onclick="analyze()">Analizar</button>
+  <button onclick="analyze()">Analizar</button>
 
-    <div id="result" class="result hidden">
-      <h2>
-        <span id="techTitle"></span>
-        <span id="statusBadge" class="badge gray">—</span>
-      </h2>
+  <div id="result"></div>
+</div>
 
-      <div class="box">
-        <strong>Estado de soporte</strong>
-        <p id="supportInfo">—</p>
-      </div>
-
-      <div class="box">
-        <strong>Última versión con soporte</strong>
-        <p id="latestVersion">—</p>
-      </div>
-
-      <div class="box">
-        <strong>Vulnerabilidades (CVE)</strong>
-        <p id="cveSummary">—</p>
-        <div id="cveList"></div>
-      </div>
-
-      <div class="footer">
-        Fuentes: endoflife.date · nvd.nist.gov<br>
-        Catálogo actualizado: <span id="catalogDate">—</span>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    async function analyze() {
-      const tech = document.getElementById("tech").value.trim();
-      const version = document.getElementById("version").value.trim();
-
-      if (!tech || !version) {
-        alert("Complete tecnología y versión");
-        return;
-      }
-
-      const result = document.getElementById("result");
-      result.classList.add("hidden");
-
-      try {
-        const res = await fetch(
-          `/check?tec=${encodeURIComponent(tech)}&ver=${encodeURIComponent(version)}`
-        );
-        const data = await res.json();
-        render(data);
-      } catch {
-        alert("Error consultando el servicio");
-      }
-    }
-
-    function render(data) {
-      const result = document.getElementById("result");
-      result.classList.remove("hidden");
-
-      document.getElementById("techTitle").innerText =
-        (data.tecnologia || "Tecnología") + " " + (data.version || "");
-
-      const badge = document.getElementById("statusBadge");
-      badge.className = "badge";
-
-      if (data.estado === "FUERA DE SOPORTE") {
-        badge.classList.add("red");
-        badge.innerText = "FUERA DE SOPORTE";
-      } else if (data.estado === "CON SOPORTE") {
-        badge.classList.add("green");
-        badge.innerText = "CON SOPORTE";
-      } else {
-        badge.classList.add("gray");
-        badge.innerText = "SOPORTE NO CONFIRMADO";
-      }
-
-      document.getElementById("supportInfo").innerText =
-        data.ciclo?.eol
-          ? "Soporte finalizado el " + data.ciclo.eol
-          : data.estado || "No disponible";
-
-      document.getElementById("latestVersion").innerText =
-        data.latestSupportedVersion || "No disponible";
-
-      document.getElementById("catalogDate").innerText =
-        data.catalogUpdate || "—";
-
-      const cves = Array.isArray(data.cves) ? data.cves : [];
-      document.getElementById("cveSummary").innerText =
-        "Total: " + cves.length;
-
-      const list = document.getElementById("cveList");
-      list.innerHTML = "";
-
-      cves.slice(0, 20).forEach(cve => {
-        const div = document.createElement("div");
-        div.className = "cve-item";
-        div.innerHTML =
-          "<strong>" + cve.id + "</strong> · " +
-          (cve.severity || "UNKNOWN") +
-          (cve.score ? " · Score " + cve.score : "") +
-          ' · <a href="' + cve.url + '" target="_blank">NVD</a>';
-        list.appendChild(div);
-      });
-
-      if (cves.length > 20) {
-        const more = document.createElement("div");
-        more.innerText = "Mostrando 20 de " + cves.length + " CVE";
-        list.appendChild(more);
-      }
-    }
-  </script>
+<script src="app.js"></script>
 </body>
 </html>
