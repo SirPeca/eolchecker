@@ -1,16 +1,18 @@
+// ============================================================
+// EOL & CVE Checker — API (Cloudflare Pages Functions)
+// ============================================================
+
 const CATALOG_UPDATE_DATE = "2026-02-03";
 
 const CATALOG = {
-  "jquery": ["jquery"],
-  "bootstrap": ["bootstrap"],
-  "openssl": ["openssl"],
-  "vue": ["vue", "vue.js"],
-  "react": ["react"],
-  "angular": ["angular"],
-  "moment.js": ["moment", "moment.js"],
-  "toastr": ["toastr"],
-  "select2": ["select2"],
-  "core-js": ["core-js"]
+  jquery: ["jquery"],
+  toastr: ["toastr"],
+  angular: ["angular"],
+  react: ["react"],
+  vue: ["vue", "vue.js"],
+  bootstrap: ["bootstrap"],
+  openssl: ["openssl"],
+  "moment.js": ["moment", "moment.js"]
 };
 
 function normalizeTechnology(input) {
@@ -21,116 +23,120 @@ function normalizeTechnology(input) {
   return value;
 }
 
-function now() {
-  return new Date();
-}
+const now = () => new Date();
 
 export async function onRequest({ request }) {
-  const url = new URL(request.url);
-  const techRaw = url.searchParams.get("tec");
-  const version = url.searchParams.get("ver");
-
-  if (!techRaw || !version) {
-    return json({ error: "Parámetros requeridos: tec, ver" }, 400);
-  }
-
-  const tech = normalizeTechnology(techRaw);
-
-  let estado = "SOPORTE NO CONFIRMADO";
-  let supportMessage =
-    "No se encontró información oficial de soporte para esta tecnología en endoflife.date. " +
-    "El estado de mantenimiento no puede confirmarse.";
-
-  let latestSupportedVersion = "-";
-  let cycleInfo = null;
-
   try {
-    const eolRes = await fetch(
-      `https://endoflife.date/api/${encodeURIComponent(tech)}.json`,
-      { cf: { cacheTtl: 86400 } }
-    );
+    const url = new URL(request.url);
+    const techRaw = url.searchParams.get("tec");
+    const version = url.searchParams.get("ver");
 
-    if (eolRes.ok) {
-      const data = await eolRes.json();
+    if (!techRaw || !version) {
+      return json({ error: "Parámetros requeridos: tec, ver" }, 400);
+    }
 
-      cycleInfo = data.find(c =>
-        c.cycle && version.startsWith(String(c.cycle))
+    const tech = normalizeTechnology(techRaw);
+
+    let estado = "SOPORTE NO CONFIRMADO";
+    let latestVersion = "-";
+    let latestSupportedVersion = "-";
+    let ciclo = null;
+
+    // ================= END OF LIFE =================
+    try {
+      const eolRes = await fetch(
+        `https://endoflife.date/api/${encodeURIComponent(tech)}.json`,
+        { cf: { cacheTtl: 86400 } }
       );
 
-      const supported = data.find(
-        c => !c.eol || new Date(c.eol) > now()
-      );
+      if (eolRes.ok) {
+        const data = await eolRes.json();
 
-      latestSupportedVersion = supported?.latest || "-";
+        if (Array.isArray(data)) {
+          // Ciclo exacto (misma rama)
+          ciclo = data.find(c =>
+            c.cycle && version.startsWith(String(c.cycle))
+          );
 
-      if (cycleInfo?.eol) {
-        if (new Date(cycleInfo.eol) < now()) {
-          estado = "FUERA DE SOPORTE";
-          supportMessage =
-            `El soporte oficial finalizó el ${cycleInfo.eol}. Se recomienda actualizar.`;
-        } else if (
-          latestSupportedVersion !== "-" &&
-          version !== latestSupportedVersion
-        ) {
-          estado = "DESACTUALIZADO";
-          supportMessage =
-            "La versión analizada tiene soporte, pero no es la última versión mantenida.";
-        } else {
-          estado = "CON SOPORTE";
-          supportMessage =
-            "La versión analizada se encuentra dentro del período de soporte.";
+          // Última versión global
+          const latestGlobal = data.find(c => c.latest);
+          latestVersion = latestGlobal?.latest || "-";
+
+          if (ciclo) {
+            latestSupportedVersion = ciclo.latest || "-";
+
+            if (ciclo.eol && new Date(ciclo.eol) < now()) {
+              estado = "FUERA DE SOPORTE";
+            } else {
+              estado =
+                version === latestSupportedVersion
+                  ? "CON SOPORTE"
+                  : "DESACTUALIZADO";
+            }
+          }
         }
       }
+    } catch {
+      // Estado queda en SOPORTE NO CONFIRMADO
     }
-  } catch {}
 
-  // ================= CVEs (SIEMPRE) =================
-  let cves = [];
+    // ================= CVEs =================
+    let cves = [];
 
-  try {
-    const res = await fetch(
-      `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(tech)}&resultsPerPage=200`
-    );
+    try {
+      const cveRes = await fetch(
+        `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(
+          tech
+        )}&resultsPerPage=200`
+      );
 
-    if (res.ok) {
-      const json = await res.json();
+      if (cveRes.ok) {
+        const json = await cveRes.json();
 
-      cves = (json.vulnerabilities || []).map(v => {
-        const cve = v.cve;
-        const metrics = cve.metrics || {};
-        const cvss =
-          metrics.cvssMetricV31?.[0]?.cvssData ||
-          metrics.cvssMetricV30?.[0]?.cvssData ||
-          metrics.cvssMetricV2?.[0]?.cvssData;
+        cves = (json.vulnerabilities || []).map(v => {
+          const cve = v.cve;
+          const metrics = cve.metrics || {};
+          const cvss =
+            metrics.cvssMetricV31?.[0]?.cvssData ||
+            metrics.cvssMetricV30?.[0]?.cvssData ||
+            metrics.cvssMetricV2?.[0]?.cvssData;
 
-        return {
-          id: cve.id,
-          severity: cvss?.baseSeverity || "UNKNOWN",
-          score: cvss?.baseScore || null,
-          published: cve.published,
-          url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
-        };
-      });
-    }
-  } catch {}
+          return {
+            id: cve.id,
+            severity: cvss?.baseSeverity || "UNKNOWN",
+            score: cvss?.baseScore || null,
+            published: cve.published,
+            url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
+          };
+        });
+      }
+    } catch {}
 
-  const summary = {
-    total: cves.length,
-    critical: cves.filter(c => c.severity === "CRITICAL").length,
-    high: cves.filter(c => c.severity === "HIGH").length
-  };
+    const order = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNKNOWN: 5 };
+    cves.sort((a, b) => order[a.severity] - order[b.severity]);
 
-  return json({
-    tecnologia: techRaw,
-    version,
-    estado,
-    supportMessage,
-    latestSupportedVersion,
-    ciclo: cycleInfo,
-    cves,
-    resumen: summary,
-    catalogUpdate: CATALOG_UPDATE_DATE
-  });
+    const resumen = {
+      total: cves.length,
+      critical: cves.filter(c => c.severity === "CRITICAL").length,
+      high: cves.filter(c => c.severity === "HIGH").length
+    };
+
+    return json({
+      tecnologia: techRaw,
+      version,
+      estado,
+      latestVersion,
+      latestSupportedVersion,
+      ciclo,
+      cves,
+      resumen,
+      fuentes: ["endoflife.date", "nvd.nist.gov"],
+      catalogUpdate: CATALOG_UPDATE_DATE
+    });
+
+  } catch {
+    return json({ error: "Error interno del servicio" }, 500);
+  }
 }
 
 function json(data, status = 200) {
