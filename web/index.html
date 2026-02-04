@@ -15,7 +15,7 @@
                  base-uri 'none';
                  form-action 'self'">
 
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <header>
@@ -38,7 +38,6 @@
           </label>
         </div>
 
-        <!-- Opciones avanzadas: ocultas por defecto, para auditoría -->
         <details id="advanced" class="advanced">
           <summary>Opciones avanzadas (auditoría)</summary>
           <div class="grid">
@@ -85,8 +84,8 @@
     <p><strong>Reglas:</strong> sin inferencias, CPE exacto, rangos estrictos. Exactitud &gt; cobertura.</p>
   </footer>
 
-  <!-- API key inyectada y auditable (debe ir antes de app.js) -->
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <!-- 🔥 ESTO ES LO IMPORTANTE: scripts correctamente cargados -->
+  <script src="./config.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
