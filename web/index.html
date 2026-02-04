@@ -1,157 +1,84 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>EOL & CVE Checker</title>
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: Arial, Helvetica, sans-serif; background:#f5f7fa; margin:0; padding:0; color:#1f2933; }
-    header { background:#0f172a; color:#fff; padding:20px; }
-    header h1 { margin:0; font-size:20px; }
-    main { max-width:900px; margin:30px auto; background:#fff; padding:24px; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,.08); }
-    label { font-weight:600; display:block; margin-top:16px; }
-    input, button { margin-top:6px; padding:10px; width:100%; font-size:14px; }
-    button { background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; }
-    button:hover { background:#1e40af; }
-    .result { margin-top:24px; padding:16px; border-radius:6px; }
-    .ok { background:#e6fffa; border-left:5px solid #0f766e; }
-    .warn { background:#fff7ed; border-left:5px solid #c2410c; }
-    .bad { background:#fef2f2; border-left:5px solid #b91c1c; }
-    .info { background:#eff6ff; border-left:5px solid #1d4ed8; }
-    .cve { margin-top:12px; padding:10px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; }
-    footer { text-align:center; font-size:12px; color:#6b7280; margin:20px; }
-  </style>
+  <title>EOL & CVE Checker — Precisión estricta</title>
+  <link rel="stylesheet" href="styles.css" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src 'self' https://endoflife.date https://services.nvd.nist.gov; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'">
 </head>
 <body>
-<header>
-  <h1>EOL & CVE Checker — Estado real de versiones</h1>
-</header>
-<main>
-  <p>Esta herramienta determina el estado real de una <strong>versión específica</strong> de una tecnología.
-     Los CVEs se usan <strong>solo como evidencia cuando aplican</strong>.</p>
+  <header>
+    <h1>EOL & CVE Checker</h1>
+    <p class="subtitle">Sistema determinista de evaluación de versiones (v2)</p>
+  </header>
 
-  <label>Tecnología</label>
-  <input id="tech" placeholder="Ej: jquery, moment, toastr" />
+  <main>
+    <section class="card">
+      <h2>Entrada</h2>
+      <form id="checker-form">
+        <div class="grid">
+          <label>
+            Vendor (CPE)
+            <input id="vendor" placeholder="p.ej.: jquery" required>
+          </label>
+          <label>
+            Product (CPE)
+            <input id="product" placeholder="p.ej.: jquery" required>
+          </label>
+          <label>
+            Versión exacta
+            <input id="version" placeholder="p.ej.: 3.6.0" required>
+          </label>
+          <label>
+            endoflife.slug (opcional)
+            <input id="eolSlug" placeholder="p.ej.: jquery">
+          </label>
+          <label>
+            NVD API Key (opcional)
+            <input id="nvdKey" placeholder="mejora límite/rate">
+          </label>
+        </div>
 
-  <label>Versión</label>
-  <input id="version" placeholder="Ej: 3.7.1" />
+        <div class="hints">
+          <p><strong>CPE base usado:</strong> <code id="cpePreview">cpe:2.3:a:&lt;vendor&gt;:&lt;product&gt;</code></p>
+          <p class="note">
+            Política “latest-only” activada para: <code>jquery</code>. Se puede editar en <code>app.js</code>.
+          </p>
+        </div>
 
-  <button onclick="analyze()">Analizar</button>
+        <button type="submit" class="primary">Evaluar</button>
+      </form>
+    </section>
 
-  <div id="output"></div>
-</main>
-<footer>
-  Fuentes: endoflife.date & NVD — Resultado basado en información pública disponible.
-</footer>
+    <section id="result" class="card hidden" aria-live="polite">
+      <h2>Resultado</h2>
+      <div id="classification" class="classification"></div>
+      <div id="explanation" class="explanation"></div>
+      <div id="cveList" class="cve-list hidden">
+        <h3>CVEs aplicables confirmados</h3>
+        <ul id="cveItems"></ul>
+      </div>
+    </section>
 
-<script>
-async function analyze() {
-  const tech = document.getElementById('tech').value.trim().toLowerCase();
-  const version = document.getElementById('version').value.trim();
-  const out = document.getElementById('output');
-  out.innerHTML = '';
+    <section class="card">
+      <h2>Prueba rápida (jQuery 3.6.0)</h2>
+      <div class="quicktest">
+        <button id="btnTest" class="secondary">Completar y evaluar</button>
+        <p class="small">
+          Según la política pública de jQuery (“solo la última versión del ciclo está soportada”), 3.6.0 **no** es la última de 3.x (3.7.1 es posterior). [1](https://endoflife.date/jquery)[2](https://jquery.com/support/)
+        </p>
+      </div>
+    </section>
+  </main>
 
-  if (!tech || !version) {
-    out.innerHTML = '<div class="result warn">Debe ingresar tecnología y versión.</div>';
-    return;
-  }
+  <footer>
+    <p>
+      <strong>Reglas</strong>: no inferencias, CPE exacto, rangos estrictos, preferir omitir antes que errar.
+    </p>
+  </footer>
 
-  let supportStatus = null;
-  let eolKnown = false;
-
-  try {
-    const eolRes = await fetch(`https://endoflife.date/api/${tech}.json`);
-    if (eolRes.ok) {
-      const data = await eolRes.json();
-      eolKnown = true;
-      const match = data.find(d => version === d.cycle || version.startsWith(d.cycle + '.'));
-      if (match) {
-        supportStatus = match.support === true || match.support === 'true';
-      }
-    }
-  } catch (e) {}
-
-  const cves = await fetchCVEs(tech, version);
-
-  let category = '';
-  let message = '';
-  let css = 'info';
-
-  if (supportStatus === true) {
-    category = 'Versión con soporte de seguridad';
-    message = 'La versión se encuentra bajo soporte de seguridad.';
-    css = 'ok';
-  } else if (supportStatus === false && cves.length > 0) {
-    category = 'Versión fuera de soporte con CVEs asociados';
-    message = 'La versión está fuera de soporte y presenta vulnerabilidades conocidas.';
-    css = 'bad';
-  } else if (supportStatus === false && cves.length === 0) {
-    category = 'Versión sin soporte ni vulnerabilidades asociadas';
-    message = 'La versión está fuera de soporte, aunque no se registran vulnerabilidades conocidas.';
-    css = 'warn';
-  } else if (supportStatus === null && cves.length === 0) {
-    category = 'Versión desactualizada sin CVEs asociados';
-    message = 'La versión está desactualizada, pero no presenta vulnerabilidades conocidas.';
-    css = 'info';
-  } else if (supportStatus === null && cves.length > 0) {
-    category = 'Versión fuera de soporte con CVEs asociados';
-    message = 'No se pudo determinar el estado exacto de soporte para esta versión. El resultado se basa en información pública disponible.';
-    css = 'bad';
-  }
-
-  let html = `<div class="result ${css}"><strong>${category}</strong><p>${message}</p>`;
-
-  if (cves.length > 0 && category.includes('CVEs')) {
-    html += '<h4>Vulnerabilidades aplicables</h4>';
-    cves.forEach(c => {
-      html += `<div class="cve"><strong>${c.id}</strong><br/>CVSS: ${c.cvss || 'N/A'}<br/>${c.desc}</div>`;
-    });
-  }
-
-  html += '</div>';
-  out.innerHTML = html;
-}
-
-async function fetchCVEs(tech, version) {
-  const results = [];
-  try {
-    const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=cpe:2.3:a:jquery:jquery:*:*:*:*:*:*:*:*`;
-    const res = await fetch(url);
-    if (!res.ok) return results;
-    const data = await res.json();
-
-    (data.vulnerabilities || []).forEach(v => {
-      const cve = v.cve;
-      const configs = cve.configurations || [];
-      let applies = false;
-
-      configs.forEach(conf => {
-        (conf.nodes || []).forEach(node => {
-          (node.cpeMatch || []).forEach(cpe => {
-            if (!cpe.criteria || !cpe.criteria.includes('jquery:jquery')) return;
-
-            const vs = cpe.versionStartIncluding || cpe.versionStartExcluding;
-            const ve = cpe.versionEndIncluding || cpe.versionEndExcluding;
-
-            if (!vs && !ve && cpe.criteria.includes(version)) applies = true;
-            if (vs && ve && version >= vs && version <= ve) applies = true;
-            if (vs && !ve && version >= vs) applies = true;
-            if (!vs && ve && version <= ve) applies = true;
-          });
-        });
-      });
-
-      if (applies) {
-        results.push({
-          id: cve.id,
-          cvss: cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore || null,
-          desc: cve.descriptions?.[0]?.value || ''
-        });
-      }
-    });
-  } catch (e) {}
-  return results;
-}
-</script>
+  <script src="app.js"></script>
 </body>
 </html>
