@@ -16,13 +16,6 @@
                  form-action 'self'">
 
   <link rel="stylesheet" href="styles.css" />
-
-  <!-- Cloudflare Pages: inyectá tu NVD API key como variable pública -->
-  <script>
-    // En Cloudflare Pages definí una variable de entorno pública (p.ej. NVD_API_KEY_PUBLIC)
-    // y asignala en build a window.NVD_API_KEY. Si preferís, podés setearla directamente acá.
-    // window.NVD_API_KEY = "a0834877-930c-40d2-9c61-afeebf6e08b3";
-  </script>
 </head>
 <body>
   <header>
@@ -33,7 +26,7 @@
   <main>
     <section class="card">
       <h2>Entrada</h2>
-      <form id="checker-form">
+      <form id="checker-form" novalidate>
         <div class="grid">
           <label>
             Software / Librería / Tecnología
@@ -89,11 +82,11 @@
   </main>
 
   <footer>
-    <p>
-      <strong>Reglas:</strong> sin inferencias, CPE exacto, rangos estrictos. Exactitud &gt; cobertura.
-    </p>
+    <p><strong>Reglas:</strong> sin inferencias, CPE exacto, rangos estrictos. Exactitud &gt; cobertura.</p>
   </footer>
 
+  <!-- Tu API key queda cargada acá (archivo estático auditable) -->
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
