@@ -166,80 +166,65 @@ function renderResult(data) {
   if (data.estado === "FUERA DE SOPORTE") {
     badge.classList.add("red");
     badge.innerText = "FUERA DE SOPORTE";
-  } else if (data.estado === "DESACTUALIZADO") {
-    badge.classList.add("orange");
-    badge.innerText = "DESACTUALIZADO";
-  } else if (data.estado === "SOPORTE NO CONFIRMADO") {
-    badge.classList.add("gray");
-    badge.innerText = "SOPORTE NO CONFIRMADO";
-  } else {
+  } else if (data.estado === "CON SOPORTE") {
     badge.classList.add("green");
     badge.innerText = "CON SOPORTE";
+  } else {
+    badge.classList.add("gray");
+    badge.innerText = "SOPORTE NO CONFIRMADO";
   }
 
   document.getElementById("supportInfo").innerText =
-    data.supportMessage;
+    data.ciclo?.eol
+      ? `El soporte oficial finaliza el ${data.ciclo.eol}.`
+      : "No existe información oficial de soporte para esta tecnología.";
 
   document.getElementById("currentVersion").innerText = data.version;
   document.getElementById("latestVersion").innerText =
-    data.latestSupportedVersion && data.latestSupportedVersion !== "-"
-      ? data.latestSupportedVersion
-      : "No disponible";
+    data.latestSupportedVersion !== "-" ? data.latestSupportedVersion : "No disponible";
 
   document.getElementById("cveSummary").innerText =
-    `Total: ${data.resumen.total} | Críticas: ${data.resumen.critical} | Altas: ${data.resumen.high}`;
+    `Aplicables: ${data.resumen.aplicables} | Riesgo potencial: ${data.resumen.riesgoPotencial}`;
 
   document.getElementById("catalogDate").innerText = data.catalogUpdate;
 
-  renderCVEs(data.cves || []);
+  renderCVEs(
+    data.cves.aplicables,
+    data.cves.riesgoPotencial
+  );
 }
 
-function renderCVEs(cves) {
+function renderCVEs(aplicables, potenciales) {
   const container = document.getElementById("cveList");
   container.innerHTML = "";
 
-  if (cves.length === 0) {
-    container.innerHTML = "<p>No se encontraron vulnerabilidades conocidas.</p>";
-    return;
+  if (aplicables.length === 0) {
+    container.innerHTML =
+      "<p><strong>No se identificaron vulnerabilidades que apliquen a esta versión.</strong></p>";
+  } else {
+    container.innerHTML += "<h4>Vulnerabilidades aplicables</h4>";
+    aplicables.forEach(cve => {
+      container.innerHTML += `
+        <div class="cve-item">
+          <span class="cve-id">${cve.id}</span>
+          <span class="badge red">${cve.severity}</span>
+          ${cve.score ? `<span class="cve-score">Score: ${cve.score}</span>` : ""}
+          · <a href="${cve.url}" target="_blank">Ver NVD</a>
+        </div>`;
+    });
   }
 
-  const order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
-
-  order.forEach(level => {
-    const group = cves.filter(c => c.severity === level);
-    if (!group.length) return;
-
-    const div = document.createElement("div");
-    div.className = "cve-group";
-
-    const title = document.createElement("h4");
-    title.innerText = `${level} (${group.length})`;
-    div.appendChild(title);
-
-    group.forEach(cve => {
-      const item = document.createElement("div");
-      item.className = "cve-item";
-
-      item.innerHTML = `
-        <span class="cve-id">${cve.id}</span>
-        <span class="badge ${severityColor(cve.severity)}">${cve.severity}</span>
-        ${cve.score ? `<span class="cve-score">Score: ${cve.score}</span>` : ""}
-        · <a href="${cve.url}" target="_blank">Ver NVD</a>
-      `;
-
-      div.appendChild(item);
+  if (potenciales.length > 0) {
+    container.innerHTML += "<h4>Riesgo potencial (sin rango de versión declarado)</h4>";
+    potenciales.forEach(cve => {
+      container.innerHTML += `
+        <div class="cve-item">
+          <span class="cve-id">${cve.id}</span>
+          <span class="badge gray">${cve.severity}</span>
+          · <a href="${cve.url}" target="_blank">Ver NVD</a>
+        </div>`;
     });
-
-    container.appendChild(div);
-  });
-}
-
-function severityColor(sev) {
-  if (sev === "CRITICAL") return "red";
-  if (sev === "HIGH") return "orange";
-  if (sev === "MEDIUM") return "gray";
-  if (sev === "LOW") return "green";
-  return "gray";
+  }
 }
 </script>
 </body>
