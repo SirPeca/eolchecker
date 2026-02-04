@@ -1,34 +1,62 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>EOL & CVE Checker</title>
-  <style>
-    body { font-family: Arial, sans-serif; background:#f5f5f5; }
-    .box { background:#fff; padding:20px; max-width:800px; margin:40px auto; border-radius:6px; }
-    input, button { padding:8px; margin:5px 0; width:100%; }
-    .badge { display:inline-block; padding:4px 8px; border-radius:4px; font-size:12px; }
-    .ok { background:#2ecc71; color:#fff; }
-    .warn { background:#f39c12; color:#fff; }
-    .crit { background:#e74c3c; color:#fff; }
-    ul { padding-left:20px; }
-  </style>
+<meta charset="UTF-8">
+<title>EOL & CVE Checker</title>
+<style>
+body { font-family: Arial; background:#f5f6f7 }
+.container { max-width:900px; margin:40px auto; background:#fff; padding:30px; border-radius:8px }
+.badge { padding:5px 10px; border-radius:4px; color:#fff; font-size:13px }
+.green{background:#2e7d32} .red{background:#c62828} .gray{background:#555}
+.cve{margin:5px 0;padding:6px;border-bottom:1px solid #eee}
+</style>
 </head>
 <body>
-<div class="box">
-  <h2>EOL & CVE Checker</h2>
+<div class="container">
+<h2>EOL & CVE Checker</h2>
 
-  <label>Tecnología</label>
-  <input id="tech" value="jquery" />
+<label>Tecnología</label>
+<input id="tech"><br><br>
 
-  <label>Versión</label>
-  <input id="version" value="3.7.1" />
+<label>Versión</label>
+<input id="ver"><br><br>
 
-  <button onclick="analyze()">Analizar</button>
+<button onclick="analyze()">Analizar</button>
 
-  <div id="result"></div>
+<div id="out"></div>
 </div>
 
-<script src="app.js"></script>
+<script>
+async function analyze(){
+  const tech=document.getElementById("tech").value;
+  const ver=document.getElementById("ver").value;
+  const out=document.getElementById("out");
+
+  out.innerHTML="Consultando...";
+
+  const r=await fetch(`/check?tec=${tech}&ver=${ver}`);
+  const d=await r.json();
+
+  let badge="gray";
+  if(d.soporte.estado==="CON SOPORTE") badge="green";
+  if(d.soporte.estado==="FUERA DE SOPORTE") badge="red";
+
+  out.innerHTML=`
+    <h3>${d.tecnologia} ${d.version}
+      <span class="badge ${badge}">${d.soporte.estado}</span>
+    </h3>
+
+    <p><b>Última versión conocida:</b> ${d.soporte.latest}</p>
+
+    <h4>Vulnerabilidades aplicables</h4>
+    ${d.cves.length===0
+      ? "<p>✔ No se detectaron CVE aplicables a esta versión.</p>"
+      : d.cves.map(c =>
+        `<div class="cve">${c.id} — ${c.severity} (${c.score})</div>`
+      ).join("")
+    }
+  `;
+}
+</script>
 </body>
 </html>
