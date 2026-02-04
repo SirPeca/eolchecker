@@ -64,7 +64,7 @@ async function analyze() {
     if (eolRes.ok) {
       const data = await eolRes.json();
       eolKnown = true;
-      const match = data.find(d => d.cycle === version || version.startsWith(d.cycle));
+      const match = data.find(d => version === d.cycle || version.startsWith(d.cycle + '.'));
       if (match) {
         supportStatus = match.support === true || match.support === 'true';
       }
@@ -115,7 +115,7 @@ async function analyze() {
 async function fetchCVEs(tech, version) {
   const results = [];
   try {
-    const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${encodeURIComponent(tech)}`;
+    const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=cpe:2.3:a:jquery:jquery:*:*:*:*:*:*:*:*`;
     const res = await fetch(url);
     if (!res.ok) return results;
     const data = await res.json();
@@ -128,7 +128,7 @@ async function fetchCVEs(tech, version) {
       configs.forEach(conf => {
         (conf.nodes || []).forEach(node => {
           (node.cpeMatch || []).forEach(cpe => {
-            if (!cpe.criteria || !cpe.criteria.includes(tech)) return;
+            if (!cpe.criteria || !cpe.criteria.includes('jquery:jquery')) return;
 
             const vs = cpe.versionStartIncluding || cpe.versionStartExcluding;
             const ve = cpe.versionEndIncluding || cpe.versionEndExcluding;
