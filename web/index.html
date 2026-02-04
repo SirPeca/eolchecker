@@ -1,74 +1,158 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>EOL & CVE Checker</title>
+  <meta charset="UTF-8">
+  <title>EOL & CVE Checker</title>
 
-<style>
-body { font-family: Arial; background:#f4f6f8 }
-.container {
-  max-width: 900px;
-  margin: 40px auto;
-  background: #fff;
-  padding: 30px;
-  border-radius: 8px;
-}
-.badge {
-  padding: 4px 10px;
-  border-radius: 4px;
-  color: #fff;
-  font-size: 13px;
-}
-.green { background:#2e7d32 }
-.gray { background:#666 }
-.cve { padding:6px 0; border-bottom:1px solid #eee }
-</style>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 40px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: #fff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    label {
+      font-weight: 600;
+      display: block;
+      margin-top: 20px;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 6px;
+      font-size: 14px;
+    }
+
+    button {
+      margin-top: 25px;
+      padding: 10px 18px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    .box {
+      margin-top: 25px;
+      padding: 18px;
+      background: #f8f9fa;
+      border-radius: 6px;
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 13px;
+      margin-left: 8px;
+    }
+
+    .green { background: #2e7d32; }
+    .orange { background: #ef6c00; }
+    .red { background: #c62828; }
+    .gray { background: #616161; }
+
+    .cve {
+      padding: 6px 0;
+      border-bottom: 1px solid #ddd;
+      font-size: 14px;
+    }
+
+    .footer {
+      margin-top: 30px;
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
 </head>
 
 <body>
 <div class="container">
-<h2>EOL & CVE Checker</h2>
+  <h1>EOL & CVE Checker</h1>
+  <p>Evaluación objetiva de soporte y vulnerabilidades (NVD / endoflife.date)</p>
 
-<label>Tecnología</label><br>
-<input id="tech"><br><br>
+  <label>Tecnología</label>
+  <input id="tech" placeholder="Ej: jquery, openssl, toastr">
 
-<label>Versión</label><br>
-<input id="ver"><br><br>
+  <label>Versión</label>
+  <input id="version" placeholder="Ej: 3.7.1">
 
-<button onclick="run()">Analizar</button>
+  <button onclick="analyze()">Analizar</button>
 
-<div id="out"></div>
+  <div id="result" style="display:none">
+
+    <div class="box">
+      <strong id="title"></strong>
+      <span id="status" class="badge"></span>
+    </div>
+
+    <div class="box">
+      <h3>Soporte</h3>
+      <p id="support"></p>
+    </div>
+
+    <div class="box">
+      <h3>Vulnerabilidades (NVD)</h3>
+      <p id="cveInfo"></p>
+      <div id="cves"></div>
+    </div>
+
+    <div class="footer">
+      Fuentes: endoflife.date · nvd.nist.gov
+    </div>
+  </div>
 </div>
 
 <script>
-async function run() {
-  const tech = techInput.value;
-  const ver = verInput.value;
-  out.innerHTML = "Analizando…";
+async function analyze() {
+  const tech = techInput.value.trim();
+  const version = versionInput.value.trim();
 
-  const res = await fetch(`/check?tec=${tech}&ver=${ver}`);
-  const d = await res.json();
+  if (!tech || !version) {
+    alert("Complete tecnología y versión");
+    return;
+  }
 
-  out.innerHTML = `
-    <h3>${d.tecnologia} ${d.version}
-      <span class="badge green">${d.soporte.estado}</span>
-    </h3>
-    <p><b>Última versión conocida:</b> ${d.soporte.latest}</p>
+  const res = await fetch(`/check?tec=${encodeURIComponent(tech)}&ver=${encodeURIComponent(version)}`);
+  const data = await res.json();
 
-    <h4>Vulnerabilidades aplicables</h4>
-    ${
-      d.cves.length === 0
-      ? "<p>✔ No existen CVE oficialmente asociadas a esta versión.</p>"
-      : d.cves.map(c =>
-        `<div class="cve">${c.id} — ${c.severity} (${c.score})</div>`
-      ).join("")
-    }
-  `;
+  document.getElementById("result").style.display = "block";
+  document.getElementById("title").innerText = `${data.tecnologia} ${data.version}`;
+
+  const badge = document.getElementById("status");
+  badge.className = "badge " + data.estadoColor;
+  badge.innerText = data.estado;
+
+  document.getElementById("support").innerText = data.mensajeSoporte;
+
+  document.getElementById("cveInfo").innerText = data.mensajeCVE;
+
+  const list = document.getElementById("cves");
+  list.innerHTML = "";
+
+  data.cves.forEach(c => {
+    const div = document.createElement("div");
+    div.className = "cve";
+    div.innerHTML = `<strong>${c.id}</strong> — ${c.severity} · <a href="${c.url}" target="_blank">NVD</a>`;
+    list.appendChild(div);
+  });
 }
 
 const techInput = document.getElementById("tech");
-const verInput = document.getElementById("ver");
-const out = document.getElementById("out");
+const versionInput = document.getElementById("version");
 </script>
 </body>
 </html>
