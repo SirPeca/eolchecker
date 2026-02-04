@@ -1,9 +1,12 @@
 /* =========================================================
  * EOL & CVE Checker — v2 determinista (estático)
- * - CPE exacto cpe:2.3:a:<vendor>:<product>
- * - endoflife.date + “latest-only” para jQuery
+ * - UI minimal: software + versión
+ * - CPE por defecto: cpe:2.3:a:<software>:<software> (minúsculas, espacios→guiones)
+ * - Advanced (opcional) para override de CPE y slug
+ * - endoflife.date + política latest-only SOLO para jQuery
  * - Comparador smart (1.0.1k, 1.1.1t, rc, etc.)
  * - NVD v2 con paginación + AbortController
+ * - Usa SOLO window.NVD_API_KEY; si falta, omite CVEs (auditable)
  * =======================================================*/
 
 // ---------- Helpers de DOM y estado ----------
@@ -11,6 +14,12 @@ const $ = (sel) => document.querySelector(sel);
 let currentAbort = null; // para cancelar consultas en curso
 
 const todayISO = () => new Date().toISOString().slice(0,10);
+
+// ---------- Normalización de “software” a CPE/slug por defecto ----------
+function normalizeName(s) {
+  // minúsculas, recorta y reemplaza espacios consecutivos por '-'
+  return String(s || "").trim().toLowerCase().replace(/\s+/g, '-');
+}
 
 // ---------- Parser/Comparador de versiones (smart) ----------
 function parseSmart(versionRaw) {
@@ -76,7 +85,7 @@ function isoDateLE(aISO, bISO){ return new Date(aISO) <= new Date(bISO); }
 function isoDateGT(aISO, bISO){ return new Date(aISO) >  new Date(bISO); }
 
 function resolveSupportByPolicy(version, releases, slug){
-  // Entrada exacta
+  // 1) Entrada exacta
   const exact = releases.find(r => r.version === version);
   if (exact && typeof exact.eol === "string") {
     return isoDateGT(exact.eol, todayISO()) ? "supported" : "eol";
@@ -84,7 +93,7 @@ function resolveSupportByPolicy(version, releases, slug){
   if (exact && exact.eol === true) return "eol";
   if (exact && (exact.eol === null || exact.eol === undefined)) return "supported";
 
-  // Herencia por ciclo si aplica
+  // 2) Herencia por ciclo si aplica (solo latest-only, p.ej. jQuery)
   const key = (slug || "").toLowerCase();
   if (LATEST_ONLY.has(key)) {
     const targetMajor = (String(version).split('.')[0] || "").trim();
@@ -109,22 +118,18 @@ function resolveSupportByPolicy(version, releases, slug){
 }
 
 // ---------- NVD v2 (CPE exacto) con paginación ----------
-function resolveApiKeyFrom(userKey){
-  if (userKey && userKey.trim()) return userKey.trim();
-  if (typeof window !== "undefined" && window.NVD_API_KEY) return String(window.NVD_API_KEY);
-  try {
-    const fromLS = localStorage.getItem("NVD_API_KEY");
-    if (fromLS) return fromLS;
-  } catch {}
-  const qp = new URLSearchParams(location.search);
-  if (qp.get("nvdKey")) return qp.get("nvdKey");
-  return null;
+function hasNVDKey(){
+  return typeof window !== "undefined" && typeof window.NVD_API_KEY === "string" && window.NVD_API_KEY.trim().length > 0;
 }
 
-async function fetchAllCVEsByCPE(vendor, product, userKey, signal){
-  const apiKey = resolveApiKeyFrom(userKey);
+async function fetchAllCVEsByCPE(vendor, product, signal){
+  if (!hasNVDKey()){
+    // Sin API key → no consultamos CVEs (auditable)
+    return { baseCPE: `cpe:2.3:a:${vendor}:${product}`, cves: [], degraded: true };
+  }
+  const apiKey = window.NVD_API_KEY.trim();
   const baseCPE = `cpe:2.3:a:${vendor}:${product}`;
-  const headers = apiKey ? { "apiKey": apiKey } : undefined;
+  const headers = { "apiKey": apiKey };
   const pageSize = 2000;
 
   let startIndex = 0;
@@ -210,22 +215,15 @@ function resetUI() {
   const expl = $("#explanation"); if (expl) expl.textContent = "";
 }
 
-// Reactividad del CPE
-$("#checker-form").addEventListener("input", () => {
-  const vendor = $("#vendor").value.trim();
-  const product= $("#product").value.trim();
-  $("#cpePreview").textContent = `cpe:2.3:a:${vendor || "<vendor>"}:${product || "<product>"}`;
-});
+function updateCPEPreview() {
+  const software = normalizeName($("#software").value);
+  const vendor = normalizeName($("#cpeVendor").value) || software;
+  const product= normalizeName($("#cpeProduct").value) || software;
+  $("#cpePreview").textContent = `cpe:2.3:a:${vendor || "-"}:${product || "-"}`;
+}
 
-// Botón demo jQuery
-$("#btnTest")?.addEventListener("click", (e)=>{
-  e.preventDefault();
-  $("#vendor").value  = "jquery";
-  $("#product").value = "jquery";
-  $("#version").value = "3.6.0";
-  $("#eolSlug").value = "jquery";
-  $("#checker-form").dispatchEvent(new Event("submit"));
-});
+// Reactividad (sin autocompletar ni ejemplos)
+$("#checker-form").addEventListener("input", updateCPEPreview);
 
 // Submit principal
 $("#checker-form").addEventListener("submit", async (e)=>{
@@ -238,14 +236,13 @@ $("#checker-form").addEventListener("submit", async (e)=>{
 
   resetUI();
 
-  const vendor = $("#vendor").value.trim().toLowerCase();
-  const product= $("#product").value.trim().toLowerCase();
-  const version= $("#version").value.trim();
-  const slug   = ($("#eolSlug").value.trim() || product).toLowerCase();
-  const userKey= $("#nvdKey").value.trim();
-
-  // Guardar key en localStorage si se provee
-  try { if (userKey) localStorage.setItem("NVD_API_KEY", userKey); } catch {}
+  // Normalización de entradas
+  const softwareName = $("#software").value;
+  const version = $("#version").value.trim();
+  const sw = normalizeName(softwareName);
+  const vendor = normalizeName($("#cpeVendor").value) || sw;
+  const product= normalizeName($("#cpeProduct").value) || sw;
+  const slug   = normalizeName($("#eolSlug").value) || sw;
 
   // 1) endoflife.date
   let supportState = "unknown", hasNewer = false;
@@ -259,12 +256,13 @@ $("#checker-form").addEventListener("submit", async (e)=>{
     }
   }
 
-  // 2) NVD (CPE exacto) — con paginación
+  // 2) NVD (CPE exacto) — con paginación (solo si hay API key inyectada)
   let cves = [];
   let degraded = false;
   try{
-    const nvd = await fetchAllCVEsByCPE(vendor, product, userKey, signal);
-    cves = cvesApplicableStrict(nvd.cves, vendor, product, version);
+    const nvd = await fetchAllCVEsByCPE(vendor, product, signal);
+    degraded = nvd.degraded;
+    if (!degraded) cves = cvesApplicableStrict(nvd.cves, vendor, product, version);
   }catch(err){
     degraded = true; // preferimos omitir CVEs antes que errar
   }
@@ -281,10 +279,10 @@ $("#checker-form").addEventListener("submit", async (e)=>{
   const expl = $("#explanation");
   const reasons = [];
   if (supportState === "supported") reasons.push("endoflife.date indica soporte vigente o sin fecha de EOL para esta versión/ciclo.");
-  if (supportState === "eol") reasons.push("endoflife.date indica fuera de soporte (o política latest‑only aplicada).");
+  if (supportState === "eol") reasons.push("endoflife.date indica fuera de soporte (o política latest‑only aplicada donde corresponde).");
   if (supportState === "unknown") reasons.push("No se halló entrada específica en endoflife.date para esta versión.");
   if (hasNewer) reasons.push("Existe una versión más nueva del mismo producto/ciclo.");
-  if (degraded) reasons.push("No se consultaron CVEs por limitación de la API/CORS; se prioriza exactitud > cobertura.");
+  if (degraded) reasons.push("No se consultaron CVEs por ausencia de NVD API Key inyectada; se prioriza exactitud > cobertura.");
   if (!degraded && cves.length === 0) reasons.push("No se confirmaron CVEs aplicables bajo CPE y rangos estrictos.");
   expl.textContent = reasons.join(" ");
 
@@ -298,4 +296,7 @@ $("#checker-form").addEventListener("submit", async (e)=>{
     }
   }
 });
+
+// Inicializar preview en blanco
+updateCPEPreview();
 ``
