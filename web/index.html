@@ -1,41 +1,58 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>EOL & CVE Checker</title>
-  <link rel="stylesheet" href="./styles.css"/>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <header>
     <h1>EOL & CVE Checker</h1>
-    <p class="subtitle">Estado de soporte + CVEs (best-effort) — modo GitHub Pages (sin backend)</p>
+    <p class="subtitle">
+      Soporte/EOL (best-effort) + CVEs/KEV usando fuentes públicas (OSV/NVD/KEV/endoflife-date repo)
+    </p>
   </header>
 
   <main>
     <div class="card">
-      <div class="row">
-        <div class="field">
-          <label for="tech">Tecnología</label>
-          <input id="tech" placeholder="Ej: jquery, nginx, nodejs, dotnet, openssl" autocomplete="off"/>
+      <div class="grid">
+        <div>
+          <label for="tech">Tecnología / Producto</label>
+          <input id="tech" placeholder="Ej: jquery, nginx, nodejs, dotnet, openssl" />
         </div>
 
-        <div class="field">
+        <div>
           <label for="version">Versión</label>
-          <input id="version" placeholder="Ej: 3.6.1" autocomplete="off"/>
+          <input id="version" placeholder="Ej: 3.6.1" />
         </div>
 
-        <div class="field">
-          <label>&nbsp;</label>
-          <button class="btn" id="btn">Consultar</button>
+        <div>
+          <label for="ecosystem">Ecosistema (para OSV)</label>
+          <select id="ecosystem">
+            <option value="">Auto</option>
+            <option value="npm">npm</option>
+            <option value="PyPI">PyPI</option>
+            <option value="Maven">Maven</option>
+            <option value="NuGet">NuGet</option>
+            <option value="Go">Go</option>
+            <option value="RubyGems">RubyGems</option>
+            <option value="Packagist">Packagist</option>
+            <option value="crates.io">crates.io</option>
+            <option value="GIT">GIT</option>
+          </select>
         </div>
-      </div>
 
-      <div class="hint">
-        Fuentes (best-effort): OSV + KEV + NVD (si el navegador lo permite) + cache EOL local (si existe).
+        <div class="actions">
+          <button class="btn" id="btn" type="button">Consultar</button>
+          <button class="btn btn2" id="btnExample" type="button">Ejemplo</button>
+        </div>
       </div>
 
       <div id="output" class="output"></div>
+      <div class="footnote">
+        Nota: Algunas fuentes pueden fallar por políticas CORS del proveedor. En ese caso se muestran links para verificación manual.
+      </div>
     </div>
   </main>
 
