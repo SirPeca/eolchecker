@@ -1,422 +1,569 @@
-// app.js (frontend) — GitHub Pages only (sin backend)
+// app.js (GitHub Pages - frontend only)
+// Fuentes:
+// - OSV: POST https://api.osv.dev/v1/query  (vulns por paquete+versión) [5](https://google.github.io/osv.dev/post-v1-query/)[6](https://google.github.io/osv.dev/api/)
+// - KEV: JSON del repo de CISA [7](https://github.com/cisagov/kev-data)
+// - Soporte/EOL: best-effort consultando metadata de endoflife-date (puede fallar por CORS en algunos escenarios) [3](https://github.com/dweber019/backstage-plugins/issues/3)[4](https://endoflife.date/docs/api/v1/openapi.yml)
+//
+// Nota GitHub Pages: hosting estático (no server-side), por eso todo ocurre en el browser. [1](https://github.com/orgs/community/discussions/167331)[2](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)
 
-const OSV_QUERY = "https://api.osv.dev/v1/query"; // docs: POST /v1/query [4](https://google.github.io/osv.dev/post-v1-query/)
-const KEV_JSON  = "https://raw.githubusercontent.com/cisagov/kev-data/main/known_exploited_vulnerabilities.json"; // repo KEV [5](https://github.com/cisagov/kev-data)
-const NVD_BASE  = "https://services.nvd.nist.gov/rest/json/cves/2.0"; // apiKey por header en 2.0 [6](https://nvd.nist.gov/General/News/api-20-announcements)
+const OSV_QUERY = "https://api.osv.dev/v1/query";
+const KEV_JSON  = "https://raw.githubusercontent.com/cisagov/kev-data/main/known_exploited_vulnerabilities.json";
 
-// Cache local (en tu repo). Si existe, se usa para EOL/Support sin CORS.
-const LOCAL_EOL_CACHE_PREFIX = "./eol-cache/";
+// Intento best-effort para “soporte/EOL” desde el repo (raw) de endoflife-date.
+// Si falla, no inventamos: dejamos enlaces para validar manual.
+const EOL_PRODUCTS_RAW = "https://raw.githubusercontent.com/endoflife-date/endoflife.date/master/products/";
 
-// Alias / normalización de slugs (endoflife-date style)
 const SLUG_MAP = {
   "node": "nodejs",
   "node.js": "nodejs",
   ".net": "dotnet",
   "dotnet": "dotnet",
-  "asp.net": "dotnet",
 };
 
-// Heurística simple de ecosistema para OSV
-const OSV_ECOSYSTEM_HINTS = {
-  // JS libs típicas
+const OSV_HINTS = {
+  // heurística: librerías típicas
   "jquery": "npm",
   "bootstrap": "npm",
+  "datatables": "npm",
   "lodash": "npm",
   "moment": "npm",
   "react": "npm",
   "angular": "npm",
+  "angularjs": "npm",
   "vue": "npm",
-  // runtimes
-  "nodejs": "npm", // ojo: nodejs como runtime no es package npm; se usa best-effort
 };
 
-function $(id){ return document.getElementById(id); }
+const btn = document.getElementById("btn");
+const btnExample = document.getElementById("btnExample");
+btn.addEventListener("click", analyze);
+btnExample.addEventListener("click", () => {
+  document.getElementById("tech").value = "jquery";
+  document.getElementById("version").value = "3.6.1";
+  document.getElementById("ecosystem").value = "npm";
+  analyze();
+});
+
+window.analyze = analyze;
 
 function esc(s){
-  return String(s ?? "").replace(/[&<>"']/g, c => ({
-    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
-  }[c]));
+  return String(s ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
 }
 
-function stateBadgeClass(state){
-  const s = (state || "").toLowerCase();
-  if (s.includes("obsolete")) return "bad";
-  if (s.includes("outdated")) return "warn";
-  if (s.includes("uptodate")) return "ok";
-  return "warn";
+function badgeClass(state){
+  const v = (state || "").toLowerCase();
+  if (v.includes("obsolete")) return "bad";
+  if (v.includes("outdated")) return "warn";
+  if (v.includes("uptodate")) return "ok";
+  return "unk";
 }
 
+function isoToday(){
+  const d = new Date();
+  // normalizamos a fecha para comparaciones simples
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+function parseDateSafe(s){
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// --- fetch helpers ---
+async function fetchJson(url, init = {}, timeoutMs = 15000){
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try{
+    const res = await fetch(url, { ...init, signal: ctrl.signal });
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    const text = await res.text();
+    // si devuelve HTML u otra cosa, reportamos limpio
+    if (!ct.includes("application/json")){
+      return { __nonJson: true, status: res.status, statusText: res.statusText, bodyPreview: text.slice(0, 400), url };
+    }
+    const data = JSON.parse(text);
+    return { __ok: res.ok, status: res.status, data };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function fetchText(url, timeoutMs = 15000){
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try{
+    const res = await fetch(url, { signal: ctrl.signal });
+    const text = await res.text();
+    return { ok: res.ok, status: res.status, text };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// --- YAML frontmatter parsing (minimal, best-effort) ---
+// No es un parser YAML completo; solo alcanza para muchos frontmatters simples.
+function extractFrontMatter(md){
+  const lines = md.split(/\r?\n/);
+  if (lines[0]?.trim() !== "---") return null;
+  let end = -1;
+  for (let i=1;i<lines.length;i++){
+    if (lines[i].trim() === "---"){ end = i; break; }
+  }
+  if (end === -1) return null;
+  return lines.slice(1, end).join("\n");
+}
+
+function parseSimpleYaml(yaml){
+  // Soporta:
+  // key: value
+  // key:
+  //   - item
+  //   - key: value (obj list)
+  const obj = {};
+  const lines = yaml.split(/\r?\n/);
+
+  let currentKey = null;
+  let currentList = null;
+  let currentObj = null;
+
+  const commitObj = () => {
+    if (currentKey && currentObj){
+      currentList.push(currentObj);
+      currentObj = null;
+    }
+  };
+
+  for (let raw of lines){
+    const line = raw.replace(/\t/g,"  ");
+    if (!line.trim() || line.trim().startsWith("#")) continue;
+
+    // list item
+    const mList = line.match(/^\s*-\s*(.*)\s*$/);
+    if (mList && currentKey){
+      const rest = mList[1];
+      if (!Array.isArray(obj[currentKey])) obj[currentKey] = [];
+      currentList = obj[currentKey];
+
+      // - key: value  (inline object)
+      const mInline = rest.match(/^([A-Za-z0-9_\-]+)\s*:\s*(.*)$/);
+      if (mInline){
+        commitObj();
+        currentObj = {};
+        currentObj[mInline[1]] = stripYamlValue(mInline[2]);
+        // dejamos currentObj abierto por si siguen líneas indentadas
+      } else {
+        commitObj();
+        currentList.push(stripYamlValue(rest));
+      }
+      continue;
+    }
+
+    // key: value
+    const mKV = line.match(/^\s*([A-Za-z0-9_\-]+)\s*:\s*(.*)\s*$/);
+    if (mKV){
+      // si veníamos con obj abierto lo cerramos
+      commitObj();
+      currentKey = mKV[1];
+      const v = mKV[2];
+      if (v === ""){
+        obj[currentKey] = obj[currentKey] ?? [];
+        currentList = Array.isArray(obj[currentKey]) ? obj[currentKey] : null;
+      } else {
+        obj[currentKey] = stripYamlValue(v);
+        currentList = null;
+      }
+      continue;
+    }
+
+    // líneas indentadas para completar currentObj
+    if (currentObj && currentKey && line.startsWith("  ")){
+      const m = line.trim().match(/^([A-Za-z0-9_\-]+)\s*:\s*(.*)$/);
+      if (m){
+        currentObj[m[1]] = stripYamlValue(m[2]);
+      }
+    }
+  }
+
+  commitObj();
+  return obj;
+}
+
+function stripYamlValue(v){
+  let s = String(v ?? "").trim();
+  // remove quotes
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))){
+    s = s.slice(1,-1);
+  }
+  // booleans
+  if (s === "true") return true;
+  if (s === "false") return false;
+  return s;
+}
+
+// --- Support/EOL best-effort ---
+async function getSupportBestEffort(productInput, versionInput){
+  const product = (productInput || "").toLowerCase().trim();
+  const slug = SLUG_MAP[product] || product;
+  const major = String(versionInput || "").split(".")[0];
+
+  const evidence = {
+    support_links: [],
+    notes: []
+  };
+
+  // 1) Intento leer el producto desde el repo (raw) para tener “algo” aunque el API de endoflife.date falle por CORS.
+  // Si falla: no inventamos.
+  const rawUrl = `${EOL_PRODUCTS_RAW}${encodeURIComponent(slug)}.md`;
+  evidence.support_links.push(rawUrl);
+  const r = await fetchText(rawUrl, 12000);
+
+  if (!r.ok){
+    evidence.notes.push(`No se pudo obtener metadata de soporte/EOL desde el repo (HTTP ${r.status}).`);
+    evidence.notes.push(`La API/sitio de endoflife.date puede presentar limitaciones CORS en navegadores, por lo que la verificación puede requerir revisión manual.`); // [3](https://github.com/dweber019/backstage-plugins/issues/3)[4](https://endoflife.date/docs/api/v1/openapi.yml)
+    return {
+      known: false,
+      eol: null,
+      supportUntil: null,
+      latest: null,
+      cycleFound: null,
+      evidence
+    };
+  }
+
+  const fm = extractFrontMatter(r.text);
+  if (!fm){
+    evidence.notes.push("No se detectó frontmatter YAML en el archivo del producto (best-effort).");
+    return { known:false, eol:null, supportUntil:null, latest:null, cycleFound:null, evidence };
+  }
+
+  const meta = parseSimpleYaml(fm);
+
+  // Muchos productos listan “releases:” como lista de objetos (cycle/release/eol/latest/support/security...)
+  const releases = Array.isArray(meta.releases) ? meta.releases : [];
+  let chosen = null;
+
+  // Elegimos ciclo por “major” (best-effort). Si el ciclo es tipo "3.6" y major="3", también matchea.
+  for (const item of releases){
+    const cycle = String(item.cycle ?? item.releaseCycle ?? item.version ?? "").trim();
+    if (!cycle) continue;
+    if (cycle === major || cycle.startsWith(major + ".") || cycle.startsWith(major + " ")){
+      chosen = item; break;
+    }
+  }
+
+  if (!chosen && releases.length){
+    // fallback: primer ciclo que “parezca” coincidir por prefijo
+    for (const item of releases){
+      const cycle = String(item.cycle ?? item.releaseCycle ?? item.version ?? "").trim();
+      if (cycle && String(versionInput).startsWith(cycle)) { chosen = item; break; }
+    }
+  }
+
+  if (!chosen){
+    evidence.notes.push("No se encontró un ciclo compatible para esa versión en la metadata (best-effort).");
+    return { known:true, eol:null, supportUntil:null, latest:null, cycleFound:null, evidence };
+  }
+
+  const eol = chosen.eol ?? null;
+  const supportUntil = chosen.support ?? chosen.security ?? (typeof chosen.lts === "string" ? chosen.lts : null) ?? null;
+  const latest = chosen.latest ?? null;
+
+  return {
+    known: true,
+    eol,
+    supportUntil,
+    latest,
+    cycleFound: String(chosen.cycle ?? chosen.releaseCycle ?? "").trim() || null,
+    evidence
+  };
+}
+
+// --- OSV CVEs ---
+async function getOsvVulns(productInput, versionInput, ecosystemOverride){
+  const product = (productInput || "").trim();
+  const eco = ecosystemOverride || OSV_HINTS[product.toLowerCase()] || "";
+
+  // Si no sabemos ecosistema, devolvemos vacío (no inventamos).
+  if (!eco){
+    return {
+      used: false,
+      ecosystem: null,
+      vulns: [],
+      cveIds: [],
+      evidence: {
+        osv: [OSV_QUERY],
+        notes: ["No se pudo inferir ecosistema para OSV. Elegí uno en el selector (npm/PyPI/Maven/NuGet/etc)."]
+      }
+    };
+  }
+
+  const payload = {
+    package: { name: product, ecosystem: eco },
+    version: String(versionInput || "").trim()
+  };
+
+  const resp = await fetchJson(OSV_QUERY, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  }, 20000);
+
+  // si OSV no responde JSON por alguna razón
+  if (resp.__nonJson){
+    return {
+      used: true,
+      ecosystem: eco,
+      vulns: [],
+      cveIds: [],
+      evidence: { osv: [OSV_QUERY], notes: [`OSV respondió no-JSON o bloqueado. HTTP ${resp.status}.`] }
+    };
+  }
+
+  const vulns = resp.data?.vulns || [];
+  const cveSet = new Set();
+  for (const v of vulns){
+    const aliases = v.aliases || [];
+    for (const a of aliases){
+      if (String(a).startsWith("CVE-")) cveSet.add(String(a));
+    }
+  }
+
+  return {
+    used: true,
+    ecosystem: eco,
+    vulns,
+    cveIds: Array.from(cveSet),
+    evidence: { osv: [OSV_QUERY], notes: [] }
+  };
+}
+
+// --- KEV cross-check ---
+async function getKevHits(cveIds){
+  if (!cveIds?.length){
+    return { kevHits: [], evidence: [KEV_JSON], notes: ["Sin CVEs para cruzar con KEV."] };
+  }
+
+  const resp = await fetchJson(KEV_JSON, {}, 20000);
+  if (resp.__nonJson){
+    return { kevHits: [], evidence: [KEV_JSON], notes: [`KEV respondió no-JSON o bloqueado. HTTP ${resp.status}.`] };
+  }
+
+  const list = resp.data?.vulnerabilities || resp.data || [];
+  const kevSet = new Set((list || []).map(x => x.cveID || x.cveId || x.cve).filter(Boolean));
+  const hits = cveIds.filter(id => kevSet.has(id));
+  return { kevHits: hits, evidence: [KEV_JSON], notes: [] };
+}
+
+// --- classification (Rodrigo-style) ---
 function classifyState({ supportKnown, isEol, inSupport, hasCve }){
-  // Estados según el prompt que pegaste (best-effort)
+  // según tu spec textual
   if (supportKnown && isEol && hasCve) return "obsolete with known vulnerabilities";
-  if (supportKnown && isEol && !hasCve) return "obsolete without known vulnerabilities";
+  if (supportKnown && isEol && !hasCve) return "obsolete without known vulnerabtilies";
   if (supportKnown && inSupport && hasCve) return "outdated with known vulnerabilities";
-  if (supportKnown && inSupport && !hasCve) return "outdated without known vulnerabilities";
-  // “uptodate” requiere supported + sin CVE, pero como es best-effort lo dejamos como caso aparte
+  if (supportKnown && inSupport && !hasCve) return "outdated without known vulnerabtilies";
   if (supportKnown && inSupport && !hasCve) return "uptodate";
   return "unknown";
 }
 
-// ---- EOL (desde cache local) ----
-async function fetchLocalEol(productSlug){
-  const url = `${LOCAL_EOL_CACHE_PREFIX}${encodeURIComponent(productSlug)}.json`;
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) return null;
-  return await r.json();
-}
-
-function chooseCycleFromEolApi(cycles, version){
-  // endoflife.date expone ciclos por “cycle” (ej: "3.6", "16", etc.)
-  // Heurística: matchear por major o major.minor
-  const v = String(version).trim();
-  const parts = v.split(".");
-  const major = parts[0] || v;
-  const majorMinor = parts.length >= 2 ? `${parts[0]}.${parts[1]}` : major;
-
-  // Prioriza major.minor exacto, luego major
-  return (cycles || []).find(c => String(c.cycle) === majorMinor)
-      || (cycles || []).find(c => String(c.cycle) === major)
-      || null;
-}
-
-function computeSupportFromCycle(cycle){
-  // Campos típicos en endoflife.date: eol (string o boolean), support (string/bool), security (string/bool), latest
-  // (No inventamos: si no existe, queda null)
-  let eol = null, supportUntil = null, latest = null;
-  let isEol = false, inSupport = false;
-
-  if (!cycle) return { eol, supportUntil, latest, isEol, inSupport };
-
-  latest = cycle.latest ?? null;
-
-  // eol puede ser true/false o string fecha
-  if (cycle.eol === true) {
-    isEol = true;
-  } else if (typeof cycle.eol === "string") {
-    eol = cycle.eol;
-    isEol = (new Date(cycle.eol) < new Date());
+function buildImpact(state, cveCount, kevHits){
+  const kevNote = kevHits?.length ? ` Además, ${kevHits.length} CVE(s) figuran como KEV (explotadas activamente).` : "";
+  if (state.includes("obsolete")){
+    return `Riesgo elevado: la versión se considera fuera de soporte (EOL) y su exposición a vulnerabilidades públicas aumenta el riesgo operativo.${kevNote}`;
   }
-
-  // support/security podrían ser fechas (string)
-  // tomamos el primero que tenga pinta de fecha
-  const candidate = (typeof cycle.support === "string" ? cycle.support : null)
-                 || (typeof cycle.security === "string" ? cycle.security : null);
-
-  supportUntil = candidate;
-
-  if (supportUntil) {
-    inSupport = (new Date(supportUntil) > new Date());
-  } else {
-    // best-effort: si no está EOL, asumimos “en soporte” desconocido → true suave
-    inSupport = !isEol;
+  if (state.includes("outdated")){
+    return `Riesgo moderado: la tecnología aún podría tener soporte, pero la versión puede estar desactualizada y con vulnerabilidades conocidas (${cveCount}).${kevNote}`;
   }
-
-  return { eol, supportUntil, latest, isEol, inSupport };
-}
-
-// ---- CVE: OSV ----
-async function queryOSV(productName, version){
-  // OSV requiere ecosystem + name (o purl). Docs de POST /v1/query [4](https://google.github.io/osv.dev/post-v1-query/)
-  const eco = OSV_ECOSYSTEM_HINTS[productName] || null;
-  if (!eco) return { vulns: [], cves: [] };
-
-  const payload = {
-    package: { name: productName, ecosystem: eco },
-    version: String(version).trim()
-  };
-
-  const r = await fetch(OSV_QUERY, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  if (!r.ok) return { vulns: [], cves: [] };
-
-  const data = await r.json();
-  const vulns = data.vulns || [];
-  const cveSet = new Set();
-
-  for (const v of vulns){
-    for (const a of (v.aliases || [])){
-      if (String(a).startsWith("CVE-")) cveSet.add(a);
-    }
+  if (state.includes("uptodate")){
+    return `Riesgo bajo por “CVE públicas” (best-effort): no se detectaron CVEs asociadas a la combinación producto/versión consultada. Esto no garantiza ausencia de riesgo.${kevNote}`;
   }
-  return { vulns, cves: [...cveSet] };
+  return `Impacto no determinable con certeza (best-effort). Revisar manualmente evidencia y referencias.${kevNote}`;
 }
 
-// ---- KEV cross-check ----
-async function fetchKEV(){
-  const r = await fetch(KEV_JSON, { cache: "no-store" });
-  if (!r.ok) return null;
-  return await r.json();
-}
-
-function kevHitsFromList(kevJson, cveList){
-  if (!kevJson || !Array.isArray(cveList) || !cveList.length) return [];
-  const items = kevJson.vulnerabilities || kevJson;
-  const set = new Set((items || []).map(x => x.cveID || x.cveId || x.cve).filter(Boolean));
-  return cveList.filter(id => set.has(id));
-}
-
-// ---- NVD (best-effort) ----
-async function queryNVDKeyword(productName, version){
-  // apiKey 2.0 va en header "apiKey" (si tuvieras una) [6](https://nvd.nist.gov/General/News/api-20-announcements)
-  // Sin apiKey: best-effort (puede rate-limit o CORS del lado del navegador).
-  const params = new URLSearchParams({
-    keywordSearch: `${productName} ${version}`,
-    noRejected: "true",
-    resultsPerPage: "20"
-  });
-
-  const url = `${NVD_BASE}?${params.toString()}`;
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) return [];
-
-  const data = await r.json();
-  const vulns = data.vulnerabilities || [];
-  const out = [];
-
-  for (const v of vulns){
-    const cve = v.cve || {};
-    if (cve.id) out.push({
-      id: cve.id,
-      url: `https://nvd.nist.gov/vuln/detail/${cve.id}`
-    });
+function buildRecommendation(state, support){
+  if (state.includes("obsolete") || state.includes("outdated")){
+    const latest = support?.latest ? ` Sugerencia: evaluar actualización hacia ${support.latest} (o última estable soportada).` : "";
+    return `Actualizar a una versión soportada por el proveedor y validar compatibilidad/regresión. ${latest}`.trim();
   }
-  return out;
+  if (state.includes("uptodate")){
+    return `Mantener versión, monitorear nuevas vulnerabilidades y cambios de soporte.`;
+  }
+  return `Recomendación best-effort: confirmar soporte/EOL en fuentes oficiales del proveedor y luego definir upgrade path.`;
 }
 
-// ---- Perspectivas (alto nivel, sin “cómo explotar”) ----
-function buildPerspectives(state, kevList){
+// Red/Blue: conceptual (sin instrucciones ofensivas)
+function buildPerspectives(state, kevHits){
   const red = [];
   const blue = [];
 
-  red.push("Las técnicas MITRE ATT&CK aplicables dependen del tipo de CVE (p.ej., ejecución de código, inyección, XSS) y del contexto de exposición.");
-  blue.push("Aplicar controles compensatorios: hardening, WAF/IDS, logging, detecciones y monitoreo de comportamiento asociado al tipo de vulnerabilidad.");
-
-  if (kevList && kevList.length){
-    red.push(`Priorizar escenarios por evidencia de explotación en el mundo real (KEV): ${kevList.join(", ")}`);
-    blue.push(`Elevar prioridad SOC/IR para indicadores asociados (KEV): ${kevList.join(", ")}`);
+  red.push("Según el tipo de CVE (si aplica), podrían involucrarse técnicas MITRE ATT&CK relacionadas a explotación de aplicaciones/servicios y ejecución de código (mapeo depende del CVE específico).");
+  if (kevHits?.length){
+    red.push("Al estar en KEV, asumir que existe explotación real y priorizar escenarios de abuso en el contexto de despliegue (exposición, superficie, controles).");
   }
+
+  blue.push("Aplicar hardening y controles compensatorios: segmentación, mínimos privilegios, WAF/IDS/IPS cuando corresponda, y monitoreo/alertas en logs.");
+  blue.push("Definir detecciones en SOC para patrones asociados a explotación del componente (requests anómalas, errores, indicadores del proveedor).");
+  if (kevHits?.length){
+    blue.push("KEV presente: elevar prioridad de monitoreo y playbooks de contención/erradicación para esos CVEs.");
+  }
+
+  // Si no hay CVEs, mantenemos blue/red igual de prudentes.
+  if (state.includes("uptodate")){
+    blue.push("Aunque no haya CVEs detectadas, mantener inventario, SBOM y scanning recurrente.");
+  }
+
   return { red, blue };
 }
 
-// ---- Render ----
-function renderReport(outEl, report){
-  const badge = stateBadgeClass(report.Description?.state);
-  const title = report.Title || "(sin título)";
-  const state = report.Description?.state || "unknown";
+// --- Render ---
+function renderReport(report){
+  const state = report?.Description?.state || "unknown";
+  const b = badgeClass(state);
 
-  const support = report.Description?.support || {};
-  const evidence = report["Evidence support"] || {};
-  const cves = report["CVE code list"] || [];
-  const kev = report["Known exploited (KEV)"] || [];
+  const support = report?.Description?.support || {};
+  const eSupport = report?.["Evidence support"] || {};
+  const cves = report?.["CVE code list"] || [];
+  const kev = report?.["Known exploited (KEV)"] || [];
 
-  outEl.innerHTML = `
-    <div>
-      <div style="font-size:1.15rem;font-weight:800;">
-        ${esc(title)}
-        <span class="badge ${badge}">${esc(state)}</span>
-      </div>
-    </div>
+  const red = report?.["Red team perspective"] || [];
+  const blue = report?.["Blue team perspective"] || [];
 
-    <div class="section">
+  return `
+    <div class="box">
+      <h2>${esc(report.Title)} <span class="badge ${b}">${esc(state)}</span></h2>
+
       <h3>Description</h3>
-      <pre>${esc(
-`State: ${state}
-Support known: ${support.known}
-EOL: ${support.eol ?? "N/A"}
-Support until: ${support.supportUntil ?? "N/A"}
-Latest: ${support.latest ?? "N/A"}
-Notes: ${report.Description?.notes ?? ""}`
-      )}</pre>
-    </div>
+      <div class="muted">
+        Define el estado y menciona soporte/EOL según evidencia best-effort.
+      </div>
+      <pre>${esc(JSON.stringify(report.Description, null, 2))}</pre>
 
-    <div class="section">
-      <h3>Evidence support</h3>
-      <pre>${esc(JSON.stringify(evidence, null, 2))}</pre>
-    </div>
+      <h3>Evidence support (references)</h3>
+      <pre>${esc(JSON.stringify(eSupport, null, 2))}</pre>
 
-    <div class="section">
       <h3>CVE code list</h3>
-      ${cves.length ? `<ul>${cves.map(id => `<li>${esc(id)}${kev.includes(id) ? ` <span class="badge bad">KEV</span>` : ""}</li>`).join("")}</ul>`
-      : `<pre>Sin CVEs detectados (best-effort).</pre>`}
-    </div>
+      <div>${cves.length ? esc(cves.join(", ")) : "Sin CVEs detectados (best-effort)."}</div>
+      ${cves.length ? `<div class="muted" style="margin-top:.25rem">
+        Links rápidos: ${cves.slice(0,6).map(id => `<a target="_blank" rel="noopener" href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(id)}">${esc(id)}</a>`).join(" · ")}
+      </div>` : ""}
 
-    <div class="section">
       <h3>Impact</h3>
       <pre>${esc(report.Impact || "")}</pre>
-    </div>
 
-    <div class="section">
       <h3>Recomendation</h3>
       <pre>${esc(report.Recomendation || "")}</pre>
-    </div>
 
-    <div class="section">
       <h3>Red team perspective</h3>
-      <ul>${(report["Red team perspective"] || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-    </div>
+      <pre>${esc(red.map(x => "- " + x).join("\n"))}</pre>
 
-    <div class="section">
       <h3>Blue team perspective</h3>
-      <ul>${(report["Blue team perspective"] || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-    </div>
+      <pre>${esc(blue.map(x => "- " + x).join("\n"))}</pre>
 
-    <div class="section">
+      <h3>Known exploited (KEV)</h3>
+      <pre>${esc(kev.length ? kev.join(", ") : "Sin coincidencias con KEV (best-effort).")}</pre>
+
       <h3>Disclaimer</h3>
       <pre>${esc(report.Disclaimer || "")}</pre>
     </div>
   `;
 }
 
-function buildEvidence({ productSlug, usedLocalEolCache, nvdTried }){
-  const evidence = {
-    support: [],
-    cve_sources: [
-      "https://osv.dev",
-      "https://api.osv.dev/v1/query",
-      "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
-      "https://services.nvd.nist.gov/rest/json/cves/2.0"
-    ],
-    kev_data: [KEV_JSON]
-  };
-
-  if (usedLocalEolCache){
-    evidence.support.push(`${LOCAL_EOL_CACHE_PREFIX}${productSlug}.json (cache local del repo)`);
-  } else {
-    evidence.support.push("Support/EOL: no disponible en cache local (best-effort).");
-  }
-
-  evidence.nvd_attempted = Boolean(nvdTried);
-  return evidence;
-}
-
+// --- MAIN ---
 async function analyze(){
-  const techRaw = $("tech").value.trim();
-  const verRaw  = $("version").value.trim();
-  const out = $("output");
-  const btn = $("btn");
+  const tech = document.getElementById("tech").value.trim();
+  const version = document.getElementById("version").value.trim();
+  const ecoSel = document.getElementById("ecosystem").value.trim();
+  const out = document.getElementById("output");
 
   out.innerHTML = "";
-  if (!techRaw || !verRaw){
-    out.innerHTML = `<pre>Faltan datos. Ingresá tecnología y versión.</pre>`;
+
+  if (!tech || !version){
+    out.innerHTML = `<div class="box"><h2>Faltan datos</h2><div class="muted">Ingresá tecnología/producto y versión.</div></div>`;
     return;
   }
 
-  btn.disabled = true;
-  out.innerHTML = `<pre>Consultando… (best-effort)</pre>`;
+  out.innerHTML = `<div class="box"><h2>Consultando…</h2><div class="muted">Buscando soporte/EOL y vulnerabilidades (best-effort).</div></div>`;
 
-  const productKey = techRaw.toLowerCase();
-  const productSlug = (SLUG_MAP[productKey] || productKey);
+  try{
+    const product = tech;
+    const productLower = tech.toLowerCase();
 
-  // 1) Support/EOL desde cache local (si existe)
-  let supportKnown = false;
-  let cycle = null;
-  let eolCycles = null;
-  let usedLocalEolCache = false;
+    // 1) soporte/eol best-effort
+    const support = await getSupportBestEffort(product, version);
 
-  try {
-    eolCycles = await fetchLocalEol(productSlug);
-    if (Array.isArray(eolCycles)) {
-      usedLocalEolCache = true;
-      supportKnown = true;
-      cycle = chooseCycleFromEolApi(eolCycles, verRaw);
-    }
-  } catch(_) {}
+    // 2) OSV
+    const osv = await getOsvVulns(product, version, ecoSel);
 
-  const supportComputed = computeSupportFromCycle(cycle);
+    // 3) KEV
+    const kev = await getKevHits(osv.cveIds);
 
-  // 2) OSV
-  let osv = { vulns: [], cves: [] };
-  try {
-    osv = await queryOSV(productKey, verRaw);
-  } catch(_) {}
+    // 4) state calc
+    const today = isoToday();
+    const eolDate = parseDateSafe(support.eol);
+    const supportUntilDate = parseDateSafe(support.supportUntil);
 
-  // 3) KEV
-  let kevHits = [];
-  try {
-    const kevJson = await fetchKEV();
-    kevHits = kevHitsFromList(kevJson, osv.cves);
-  } catch(_) {}
+    const isEol = eolDate ? (eolDate < today) : false;
+    const inSupport = supportUntilDate ? (supportUntilDate > today) : (support.known ? !isEol : false);
 
-  // 4) NVD best-effort
-  let nvdLinks = [];
-  let nvdTried = false;
-  try {
-    nvdTried = true;
-    nvdLinks = await queryNVDKeyword(productKey, verRaw);
-  } catch(_) {
-    nvdLinks = [];
-  }
+    const hasCve = (osv.cveIds || []).length > 0;
+    const state = classifyState({ supportKnown: support.known, isEol, inSupport, hasCve });
 
-  // Consolidación CVEs (OSV primero; NVD aporta links si trae ids)
-  const cveSet = new Set(osv.cves);
-  for (const x of nvdLinks) if (x?.id) cveSet.add(x.id);
-  const cveList = [...cveSet];
+    const title = `${product}, ${version}, ${state}`;
 
-  const hasCve = cveList.length > 0;
-  const state = classifyState({
-    supportKnown,
-    isEol: supportComputed.isEol,
-    inSupport: supportComputed.inSupport,
-    hasCve
-  });
+    // Evidence struct
+    const evidence = {
+      support: support.evidence?.support_links || [],
+      support_notes: support.evidence?.notes || [],
+      osv: osv.evidence?.osv || [OSV_QUERY],
+      kev: kev.evidence || [KEV_JSON],
+      notes: [
+        ...(osv.evidence?.notes || []),
+        ...(kev.notes || [])
+      ]
+    };
 
-  const title = `${techRaw}, ${verRaw}, ${state}`;
+    const impact = buildImpact(state, (osv.cveIds || []).length, kev.kevHits || []);
+    const recommendation = buildRecommendation(state, support);
+    const { red, blue } = buildPerspectives(state, kev.kevHits || []);
 
-  const impact = hasCve
-    ? "La versión presenta vulnerabilidades públicas que podrían ser explotables dependiendo del contexto (exposición, configuraciones, controles compensatorios)."
-    : "No se encontraron CVEs públicos asociados (esto no garantiza ausencia de riesgo; pueden existir fallas no publicadas o no correlacionadas por versión).";
-
-  const recomendation = (state.includes("obsolete") || state.includes("outdated"))
-    ? "Actualizar a una versión soportada por el proveedor (o la última estable disponible) y validar compatibilidad. Priorizar si hay KEV."
-    : "Mantener la versión, monitorear nuevas vulnerabilidades/cambios de soporte y aplicar controles compensatorios según exposición.";
-
-  const { red, blue } = buildPerspectives(state, kevHits);
-
-  const report = {
-    Title: title,
-    Description: {
-      state,
-      support: {
-        known: supportKnown,
-        eol: supportComputed.eol,
-        supportUntil: supportComputed.supportUntil,
-        latest: supportComputed.latest
+    // Report final (formato Rodrigo)
+    const report = {
+      Title: title,
+      Description: {
+        state,
+        support: {
+          known: support.known,
+          eol: support.eol || null,
+          supportUntil: support.supportUntil || null,
+          latest: support.latest || null,
+          cycle: support.cycleFound || null
+        },
+        notes: support.known
+          ? "Soporte/EOL obtenido best-effort desde metadata pública (puede requerir verificación manual)."
+          : "No se pudo determinar soporte/EOL automáticamente (best-effort)."
       },
-      notes: supportKnown
-        ? "Soporte/EOL obtenido desde cache local del repo (best-effort por ciclo)."
-        : "No se encontró cache local para soporte/EOL (best-effort)."
-    },
-    "Evidence support": {
-      ...buildEvidence({ productSlug, usedLocalEolCache, nvdTried }),
-      nvd_results: nvdLinks.slice(0, 10),
-      osv_summary: {
-        ecosystem_used: OSV_ECOSYSTEM_HINTS[productKey] || null,
-        vulns_found: (osv.vulns || []).length
-      }
-    },
-    "CVE code list": cveList,
-    "Known exploited (KEV)": kevHits,
-    Impact: impact,
-    Recomendation: recomendation,
-    "Red team perspective": red,
-    "Blue team perspective": blue,
-    Disclaimer: "Remember the information generated may be incorrect, manually check each reference or link to ensure the truthfulness of the answer"
-  };
+      "Evidence support": evidence,
+      "CVE code list": osv.cveIds || [],
+      "Known exploited (KEV)": kev.kevHits || [],
+      Impact: impact,
+      Recomendation: recommendation,
+      "Red team perspective": red,
+      "Blue team perspective": blue,
+      Disclaimer: "Remember the information generated may be incorrect, manually check each reference or link to ensure the truthfulness of the answer"
+    };
 
-  renderReport(out, report);
-  btn.disabled = false;
+    out.innerHTML = renderReport(report);
+
+  } catch(e){
+    out.innerHTML = `
+      <div class="box">
+        <h2>Error</h2>
+        <pre>${esc(String(e))}</pre>
+      </div>
+    `;
+  }
 }
-
-window.addEventListener("DOMContentLoaded", () => {
-  $("btn").addEventListener("click", analyze);
-  $("version").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") analyze();
-  });
-  $("tech").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") analyze();
-  });
-});
