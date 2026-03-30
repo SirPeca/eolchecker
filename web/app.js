@@ -15,13 +15,22 @@ btn.addEventListener("click", async () => {
   output.textContent = "Consulting...";
 
   try {
-    const res = await fetch(`/api/check?tech=${tech}&version=${version}&ecosystem=${ecosystem}`);
-    const data = await res.json();
+    const res = await fetch(`/check?tech=${tech}&version=${version}&ecosystem=${ecosystem}`);
+
+    const text = await res.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      output.textContent = "❌ Backend error (HTML received):\n\n" + text;
+      return;
+    }
 
     output.textContent = formatReport(data);
 
   } catch (err) {
-    output.textContent = "Error: " + err.message;
+    output.textContent = "❌ Network error: " + err.message;
   }
 });
 
