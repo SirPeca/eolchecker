@@ -1,78 +1,38 @@
-const btn = document.getElementById("btn");
-const btnExample = document.getElementById("btnExample");
-const output = document.getElementById("output");
-
-btn.addEventListener("click", async () => {
-  const tech = document.getElementById("tech").value.trim();
-  const version = document.getElementById("version").value.trim();
-  const ecosystem = document.getElementById("ecosystem").value;
-
-  if (!tech || !version) {
-    output.textContent = "⚠️ Complete tech and version";
-    return;
-  }
-
-  output.textContent = "Consulting...";
-
-  try {
-    const res = await fetch(`/check?tech=${tech}&version=${version}&ecosystem=${ecosystem}`);
-
-    const text = await res.text();
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      output.textContent = "❌ Backend error (HTML received):\n\n" + text;
-      return;
-    }
-
-    output.textContent = formatReport(data);
-
-  } catch (err) {
-    output.textContent = "❌ Network error: " + err.message;
-  }
-});
-
-btnExample.addEventListener("click", () => {
-  document.getElementById("tech").value = "jquery";
-  document.getElementById("version").value = "3.3.1";
-});
+function getColor(level) {
+  return {
+    CRITICAL: "#ff4d4d",
+    HIGH: "#ff944d",
+    MEDIUM: "#ffd24d",
+    LOW: "#4dff88"
+  }[level] || "#ccc";
+}
 
 function formatReport(data) {
   if (!data.success) return JSON.stringify(data, null, 2);
 
+  const riskColor = getColor(data.risk.level);
+
   return `
-===============================
-EOL & CVE SECURITY REPORT
-===============================
+TARGET
+------
+${data.target.tech} ${data.target.version}
 
-Target:
-  Technology: ${data.target.tech}
-  Version:    ${data.target.version}
+EOL
+---
+Status: ${data.eol.status}
+Latest: ${data.eol.latest || "N/A"}
 
---------------------------------
-EOL STATUS
---------------------------------
-  Status: ${data.eol.status}
-  Latest: ${data.eol.latest || "N/A"}
+RISK
+----
+Level: ${data.risk.level}
 
---------------------------------
-VULNERABILITIES
---------------------------------
-  Total CVEs: ${data.vulns.total}
+VULNERABILITIES (${data.vulns.total})
+------------------------------------
 
 ${data.vulns.list.map(v => `
-  - ${v.id}
-    Severity: ${v.severity}
-    KEV: ${v.kev ? "YES (Exploited)" : "NO"}
+${v.id}
+  Severity: ${v.severity}
+  KEV: ${v.kev ? "🔥 YES" : "NO"}
 `).join("")}
-
---------------------------------
-RISK ASSESSMENT
---------------------------------
-  Risk Level: ${data.risk.level}
-
-===============================
 `;
 }
