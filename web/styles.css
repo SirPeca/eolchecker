@@ -171,3 +171,7 @@ a:hover{ text-decoration:underline; }
   .grid{ grid-template-columns: 1fr; }
   .actions{ justify-content: flex-start; }
 }
+
+pre{
+  border-left: 5px solid #238636;
+}
