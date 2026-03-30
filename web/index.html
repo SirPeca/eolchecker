@@ -1,61 +1,26 @@
-<!doctype html>
-<html lang="es">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8">
   <title>EOL & CVE Checker</title>
-  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <header>
-    <h1>EOL & CVE Checker</h1>
-    <p class="subtitle">
-      Soporte/EOL (best-effort) + CVEs/KEV usando fuentes públicas (OSV/NVD/KEV/endoflife-date repo)
-    </p>
-  </header>
+  <h1>EOL & CVE Checker</h1>
 
-  <main>
-    <div class="card">
-      <div class="grid">
-        <div>
-          <label for="tech">Tecnología / Producto</label>
-          <input id="tech" placeholder="Ej: jquery, nginx, nodejs, dotnet, openssl" />
-        </div>
+  <input id="tech" placeholder="Technology (e.g. jquery)">
+  <input id="version" placeholder="Version (e.g. 3.3.1)">
+  
+  <select id="ecosystem">
+    <option value="npm">npm</option>
+    <option value="pypi">pypi</option>
+    <option value="maven">maven</option>
+  </select>
 
-        <div>
-          <label for="version">Versión</label>
-          <input id="version" placeholder="Ej: 3.6.1" />
-        </div>
+  <button id="btn">Check</button>
+  <button id="btnExample">Example</button>
 
-        <div>
-          <label for="ecosystem">Ecosistema (para OSV)</label>
-          <select id="ecosystem">
-            <option value="">Auto</option>
-            <option value="npm">npm</option>
-            <option value="PyPI">PyPI</option>
-            <option value="Maven">Maven</option>
-            <option value="NuGet">NuGet</option>
-            <option value="Go">Go</option>
-            <option value="RubyGems">RubyGems</option>
-            <option value="Packagist">Packagist</option>
-            <option value="crates.io">crates.io</option>
-            <option value="GIT">GIT</option>
-          </select>
-        </div>
+  <pre id="output"></pre>
 
-        <div class="actions">
-          <button class="btn" id="btn" type="button">Consultar</button>
-          <button class="btn btn2" id="btnExample" type="button">Ejemplo</button>
-        </div>
-      </div>
-
-      <div id="output" class="output"></div>
-      <div class="footnote">
-        Nota: Algunas fuentes pueden fallar por políticas CORS del proveedor. En ese caso se muestran links para verificación manual.
-      </div>
-    </div>
-  </main>
-
-  <script src="./app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
