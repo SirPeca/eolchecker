@@ -2,3 +2,7 @@ name = "eol-cve-checker"
 compatibility_date = "2026-02-02"
 
 pages_build_output_dir = "web"
+
+[vars]
+# Add any environment variables here if needed
+# EXAMPLE_API_KEY = "..."
