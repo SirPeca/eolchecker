@@ -2,75 +2,119 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>EOL & CVE Checker</title>
-
-<style>
-body {
-  font-family: Arial;
-  background: #0d1117;
-  color: #c9d1d9;
-  display: flex;
-  justify-content: center;
-  margin-top: 50px;
-}
-
-.container {
-  width: 650px;
-}
-
-h1 {
-  text-align: center;
-}
-
-input, select, button {
-  padding: 10px;
-  margin: 6px 0;
-  width: 100%;
-  background: #161b22;
-  color: white;
-  border: 1px solid #30363d;
-}
-
-button {
-  cursor: pointer;
-  background: #238636;
-}
-
-button:hover {
-  background: #2ea043;
-}
-
-pre {
-  background: #161b22;
-  padding: 15px;
-  margin-top: 20px;
-  border: 1px solid #30363d;
-  overflow-x: auto;
-  white-space: pre-wrap;
-}
-</style>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EOL &amp; CVE Checker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 </head>
-
 <body>
-<div class="container">
+<div class="noise"></div>
+<div class="glow-bg"></div>
 
-<h1>🛡️ EOL & CVE Checker</h1>
+<div class="wrap">
+  <header>
+    <div class="logo-line">
+      <div class="shield-icon">🛡</div>
+      <h1>EOL &amp; CVE Checker</h1>
+    </div>
+    <p class="subtitle">End-of-Life · Vulnerability · Risk Assessment</p>
+  </header>
 
-<input id="tech" placeholder="Technology (jquery)">
-<input id="version" placeholder="Version (3.3.1)">
+  <div class="card" id="scanCard">
+    <div class="scan-grid">
+      <div>
+        <div class="field-label">Technology</div>
+        <input id="tech" placeholder="e.g. jquery, django, lodash" autocomplete="off" spellcheck="false">
+      </div>
+      <div>
+        <div class="field-label">Version</div>
+        <input id="version" placeholder="e.g. 3.3.1" autocomplete="off" spellcheck="false">
+      </div>
+      <div>
+        <div class="field-label">Ecosystem</div>
+        <select id="ecosystem">
+          <option value="npm">npm</option>
+          <option value="PyPI">PyPI</option>
+          <option value="Maven">Maven</option>
+          <option value="Go">Go</option>
+          <option value="RubyGems">RubyGems</option>
+          <option value="NuGet">NuGet</option>
+          <option value="Packagist">Packagist</option>
+          <option value="crates.io">crates.io</option>
+          <option value="Hex">Hex</option>
+          <option value="Pub">Pub (Dart)</option>
+          <option value="Swift URL">Swift</option>
+        </select>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn">⚡ Scan</button>
+      <button class="btn btn-secondary" id="btnClear">✕ Clear</button>
+    </div>
+    <div class="tag-row">
+      <span class="field-label" style="align-self:center;margin:0;margin-right:4px;">Quick:</span>
+      <button class="tag" data-tech="jquery" data-ver="3.3.1" data-eco="npm">jquery 3.3.1</button>
+      <button class="tag" data-tech="django" data-ver="3.0.0" data-eco="PyPI">django 3.0.0</button>
+      <button class="tag" data-tech="lodash" data-ver="4.17.20" data-eco="npm">lodash 4.17.20</button>
+      <button class="tag" data-tech="log4j" data-ver="2.14.1" data-eco="Maven">log4j 2.14.1</button>
+      <button class="tag" data-tech="rails" data-ver="5.0.0" data-eco="RubyGems">rails 5.0.0</button>
+    </div>
+  </div>
 
-<select id="ecosystem">
-  <option value="npm">npm</option>
-  <option value="pypi">pypi</option>
-  <option value="maven">maven</option>
-</select>
+  <div class="card loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loadingText">Consulting OSV · CISA KEV · endoflife.date...</div>
+  </div>
 
-<button id="btn">Scan</button>
-<button id="btnExample">Example</button>
+  <div class="results" id="results">
+    <div class="status-bar">
+      <span class="target-label">Scan results for <strong id="resTarget"></strong></span>
+      <span class="risk-badge" id="resBadge"></span>
+    </div>
 
-<pre id="output">Ready...</pre>
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="metric-val" id="metCves">—</div>
+        <div class="metric-lbl">Total CVEs</div>
+      </div>
+      <div class="metric">
+        <div class="metric-val" id="metKev">—</div>
+        <div class="metric-lbl">KEV (Exploited)</div>
+      </div>
+      <div class="metric">
+        <div class="metric-val" id="metEolVal">—</div>
+        <div class="metric-lbl">EOL Status</div>
+      </div>
+    </div>
 
+    <div class="card results-inner-card">
+      <div class="section-title">End-of-Life</div>
+      <div class="eol-row">
+        <span class="eol-status" id="eolStatus"></span>
+        <span class="eol-latest" id="eolLatest"></span>
+      </div>
+    </div>
+
+    <div class="card results-inner-card">
+      <div class="section-title">Vulnerabilities <span id="cveCount" class="cve-count"></span></div>
+      <div class="cve-list" id="cveList"></div>
+    </div>
+  </div>
+
+  <div class="history-section" id="historySection" style="display:none">
+    <div class="history-title">⏱ Recent Scans</div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+
+  <div class="footnote">
+    Data sources: <a href="https://osv.dev" target="_blank">OSV.dev</a> ·
+    <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank">CISA KEV</a> ·
+    <a href="https://endoflife.date" target="_blank">endoflife.date</a><br>
+    This tool is informational only. Always verify with official security advisories.
+  </div>
 </div>
 
 <script src="app.js"></script>
