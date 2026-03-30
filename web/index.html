@@ -1,26 +1,78 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>EOL & CVE Checker</title>
+<meta charset="UTF-8">
+<title>EOL & CVE Checker</title>
+
+<style>
+body {
+  font-family: Arial;
+  background: #0d1117;
+  color: #c9d1d9;
+  display: flex;
+  justify-content: center;
+  margin-top: 50px;
+}
+
+.container {
+  width: 650px;
+}
+
+h1 {
+  text-align: center;
+}
+
+input, select, button {
+  padding: 10px;
+  margin: 6px 0;
+  width: 100%;
+  background: #161b22;
+  color: white;
+  border: 1px solid #30363d;
+}
+
+button {
+  cursor: pointer;
+  background: #238636;
+}
+
+button:hover {
+  background: #2ea043;
+}
+
+pre {
+  background: #161b22;
+  padding: 15px;
+  margin-top: 20px;
+  border: 1px solid #30363d;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+</style>
+
 </head>
+
 <body>
-  <h1>EOL & CVE Checker</h1>
+<div class="container">
 
-  <input id="tech" placeholder="Technology (e.g. jquery)">
-  <input id="version" placeholder="Version (e.g. 3.3.1)">
-  
-  <select id="ecosystem">
-    <option value="npm">npm</option>
-    <option value="pypi">pypi</option>
-    <option value="maven">maven</option>
-  </select>
+<h1>🛡️ EOL & CVE Checker</h1>
 
-  <button id="btn">Check</button>
-  <button id="btnExample">Example</button>
+<input id="tech" placeholder="Technology (jquery)">
+<input id="version" placeholder="Version (3.3.1)">
 
-  <pre id="output"></pre>
+<select id="ecosystem">
+  <option value="npm">npm</option>
+  <option value="pypi">pypi</option>
+  <option value="maven">maven</option>
+</select>
 
-  <script src="app.js"></script>
+<button id="btn">Scan</button>
+<button id="btnExample">Example</button>
+
+<pre id="output">Ready...</pre>
+
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>
