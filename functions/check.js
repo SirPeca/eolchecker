@@ -1,5 +1,5 @@
 // ================================
-// UTILS
+// HELPERS
 // ================================
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -8,37 +8,34 @@ function json(data, status = 200) {
   });
 }
 
-async function safeFetchJson(url) {
+async function safeFetch(url) {
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(res.statusText);
     return await res.json();
-  } catch (e) {
+  } catch {
     return null;
   }
 }
 
-function normalizeTech(t) {
+function normalize(t) {
   return t.toLowerCase().trim();
 }
 
 // ================================
-// OSV (CVEs)
+// OSV
 // ================================
-async function fetchOSV(tech, version, ecosystem) {
-  const body = {
-    package: { name: tech, ecosystem },
-    version
-  };
-
+async function getOSV(tech, version, ecosystem) {
   try {
     const res = await fetch("https://api.osv.dev/v1/query", {
       method: "POST",
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        package: { name: tech, ecosystem },
+        version
+      })
     });
 
     const data = await res.json();
-
     return data.vulns || [];
   } catch {
     return [];
@@ -46,10 +43,10 @@ async function fetchOSV(tech, version, ecosystem) {
 }
 
 // ================================
-// KEV (Exploited)
+// KEV
 // ================================
-async function fetchKEV() {
-  const data = await safeFetchJson(
+async function getKEV() {
+  const data = await safeFetch(
     "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
   );
 
@@ -61,16 +58,14 @@ async function fetchKEV() {
 // ================================
 // EOL
 // ================================
-async function fetchEOL(tech, version) {
-  const data = await safeFetchJson(`https://endoflife.date/api/${tech}.json`);
+async function getEOL(tech, version) {
+  const data = await safeFetch(`https://endoflife.date/api/${tech}.json`);
 
-  if (!data) {
-    return { status: "unknown" };
-  }
+  if (!data) return { status: "unknown" };
 
   const major = version.split(".")[0];
 
-  const match = data.find(d => d.cycle.startsWith(major));
+  const match = data.find(v => v.cycle.startsWith(major));
 
   if (!match) return { status: "unknown" };
 
@@ -83,7 +78,7 @@ async function fetchEOL(tech, version) {
 // ================================
 // RISK ENGINE
 // ================================
-function calculateRisk(vulns) {
+function calcRisk(vulns) {
   if (vulns.some(v => v.kev)) return "CRITICAL";
   if (vulns.length > 10) return "HIGH";
   if (vulns.length > 0) return "MEDIUM";
@@ -91,12 +86,12 @@ function calculateRisk(vulns) {
 }
 
 // ================================
-// MAIN HANDLER
+// MAIN
 // ================================
 export async function onRequest(context) {
   const url = new URL(context.request.url);
 
-  const tech = normalizeTech(url.searchParams.get("tech") || "");
+  const tech = normalize(url.searchParams.get("tech") || "");
   const version = url.searchParams.get("version");
   const ecosystem = url.searchParams.get("ecosystem") || "npm";
 
@@ -108,9 +103,9 @@ export async function onRequest(context) {
     console.log("Request:", { tech, version, ecosystem });
 
     const [osv, kevList, eol] = await Promise.all([
-      fetchOSV(tech, version, ecosystem),
-      fetchKEV(),
-      fetchEOL(tech, version)
+      getOSV(tech, version, ecosystem),
+      getKEV(),
+      getEOL(tech, version)
     ]);
 
     const vulns = osv.map(v => ({
@@ -119,7 +114,7 @@ export async function onRequest(context) {
       kev: kevList.includes(v.id)
     }));
 
-    const risk = calculateRisk(vulns);
+    const risk = calcRisk(vulns);
 
     return json({
       success: true,
@@ -127,7 +122,7 @@ export async function onRequest(context) {
       eol,
       vulns: {
         total: vulns.length,
-        list: vulns.slice(0, 20) // limit
+        list: vulns.slice(0, 20)
       },
       risk: { level: risk }
     });
