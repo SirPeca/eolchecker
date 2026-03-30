@@ -1,46 +1,47 @@
 /* =========================================
-   EOL & CVE Checker — app.js
+   EOL & CVE Checker — app.js  v3
    ========================================= */
 
 const $ = id => document.getElementById(id);
 
-// ---- State ----
 let scanHistory = loadHistory();
-
-// ---- Boot ----
 renderHistory();
 bindEvents();
 
-// ---- Event Binding ----
+// ---- Events ----
+
 function bindEvents() {
   $('btn').addEventListener('click', doScan);
   $('btnClear').addEventListener('click', clearForm);
 
-  // Quick tag examples
   document.querySelectorAll('.tag').forEach(t => {
     t.addEventListener('click', () => {
-      $('tech').value = t.dataset.tech;
-      $('version').value = t.dataset.ver;
+      $('tech').value      = t.dataset.tech;
+      $('version').value   = t.dataset.ver;
       $('ecosystem').value = t.dataset.eco;
     });
   });
 
-  // Enter key on inputs
   ['tech', 'version'].forEach(id => {
-    $(id).addEventListener('keydown', e => {
-      if (e.key === 'Enter') doScan();
-    });
+    $(id).addEventListener('keydown', e => { if (e.key === 'Enter') doScan(); });
   });
+
+  // CVE filter
+  $('cveFilter').addEventListener('input', filterCVEs);
+  $('sevFilter').addEventListener('change', filterCVEs);
 }
 
 // ---- Scan ----
+
+let _lastData = null;
+
 async function doScan() {
   const tech      = $('tech').value.trim();
   const version   = $('version').value.trim();
   const ecosystem = $('ecosystem').value;
 
   if (!tech || !version) {
-    shake($('tech').closest ? $('tech') : $('tech'));
+    flashError($('tech'));
     return;
   }
 
@@ -49,16 +50,17 @@ async function doScan() {
   $('btn').disabled = true;
 
   const msgs = [
-    'Querying OSV vulnerability database...',
+    'Querying OSV — with ecosystem...',
+    'Querying OSV — system-level search...',
     'Checking CISA Known Exploited Vulnerabilities...',
     'Verifying end-of-life status...',
-    'Computing risk score...',
-    'Assembling report...'
+    'Deduplicating & scoring results...',
+    'Building report...'
   ];
   let mi = 0;
   const ticker = setInterval(() => {
     $('loadingText').textContent = msgs[mi++ % msgs.length];
-  }, 950);
+  }, 900);
 
   try {
     const url = `/check?tech=${encodeURIComponent(tech)}&version=${encodeURIComponent(version)}&ecosystem=${encodeURIComponent(ecosystem)}`;
@@ -70,18 +72,18 @@ async function doScan() {
     $('btn').disabled = false;
 
     let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      showError('Backend returned HTML instead of JSON. Is the Cloudflare Worker running?');
+    try { data = JSON.parse(text); }
+    catch {
+      showBanner('Backend returned HTML instead of JSON. Is the Worker deployed?', 'error');
       return;
     }
 
     if (!data.success) {
-      showError(data.error || 'Unknown error from backend.');
+      showBanner(data.error || 'Unknown backend error.', 'error');
       return;
     }
 
+    _lastData = data;
     renderResults(data);
     addToHistory(data);
 
@@ -89,11 +91,12 @@ async function doScan() {
     clearInterval(ticker);
     $('loading').classList.remove('visible');
     $('btn').disabled = false;
-    showError('Network error: ' + err.message);
+    showBanner('Network error: ' + err.message, 'error');
   }
 }
 
-// ---- Render Results ----
+// ---- Render ----
+
 function renderResults(data) {
   $('resTarget').textContent = `${data.target.tech} ${data.target.version}`;
 
@@ -101,82 +104,158 @@ function renderResults(data) {
   badge.textContent = data.risk.level;
   badge.className   = 'risk-badge ' + riskClass(data.risk.level);
 
-  const kevCount = data.vulns.list.filter(v => v.kev).length;
+  const kevCount  = data.vulns.list.filter(v => v.kev).length;
+  const critCount = data.vulns.list.filter(v => isCriticalSev(v.severity)).length;
 
-  // Metric: CVEs
-  const metCves = $('metCves');
-  metCves.textContent = data.vulns.total;
-  metCves.className   = 'metric-val ' + (data.vulns.total > 0 ? 'col-bad' : 'col-ok');
+  // Metrics
+  setMetric('metCves', data.vulns.total,  data.vulns.total > 0  ? 'col-bad' : 'col-ok');
+  setMetric('metKev',  kevCount,           kevCount > 0          ? 'col-bad' : 'col-ok');
+  setMetric('metCrit', critCount,          critCount > 0         ? 'col-bad' : 'col-ok');
 
-  // Metric: KEV
-  const metKev = $('metKev');
-  metKev.textContent = kevCount;
-  metKev.className   = 'metric-val ' + (kevCount > 0 ? 'col-bad' : 'col-ok');
-
-  // Metric: EOL
-  const eolV      = data.eol.status;
-  const metEolVal = $('metEolVal');
-  metEolVal.textContent = eolV === 'EOL' ? 'EOL' : eolV === 'supported' ? 'OK' : '?';
-  metEolVal.className   = 'metric-val ' + (eolV === 'EOL' ? 'col-bad' : eolV === 'supported' ? 'col-ok' : 'col-warn');
-
-  // EOL status
+  // EOL
+  const eolV  = data.eol.status;
   const eolEl = $('eolStatus');
   eolEl.textContent = eolV === 'EOL' ? '✕ End of Life' : eolV === 'supported' ? '✓ Supported' : '? Unknown';
   eolEl.className   = 'eol-status ' + (eolV === 'EOL' ? 'eol-eol' : eolV === 'supported' ? 'eol-supported' : 'eol-unknown');
 
-  $('eolLatest').innerHTML = data.eol.latest
-    ? `Latest stable: <span>${data.eol.latest}</span>`
-    : '';
+  let eolMeta = '';
+  if (data.eol.latest)  eolMeta += `Latest stable: <span class="hl">${escHtml(data.eol.latest)}</span>`;
+  if (data.eol.eolDate) eolMeta += `&nbsp;&nbsp;·&nbsp;&nbsp;EOL date: <span class="hl-warn">${escHtml(data.eol.eolDate)}</span>`;
+  if (data.eol.lts)     eolMeta += `&nbsp;&nbsp;·&nbsp;&nbsp;<span class="badge-lts">LTS</span>`;
+  $('eolLatest').innerHTML = eolMeta;
 
-  // CVE count badge in section title
+  // CVE count badge
   const cveCount = $('cveCount');
   if (data.vulns.list.length > 0) {
-    cveCount.textContent = data.vulns.list.length + ' found';
+    cveCount.textContent = data.vulns.total > data.vulns.list.length
+      ? `${data.vulns.list.length} shown / ${data.vulns.total} total`
+      : `${data.vulns.total} found`;
     cveCount.style.display = '';
   } else {
     cveCount.style.display = 'none';
   }
 
-  // CVE list
-  const cveList = $('cveList');
-  if (data.vulns.list.length === 0) {
-    cveList.innerHTML = '<div class="no-cves">✓ No known vulnerabilities found</div>';
-  } else {
-    cveList.innerHTML = data.vulns.list.map((v, i) => `
-      <div class="cve-item" style="animation-delay:${i * 0.03}s">
-        <span class="cve-id">${escHtml(v.id)}</span>
-        <span class="sev-badge ${sevClass(v.severity)}">${sevLabel(v.severity)}</span>
-        ${v.kev ? '<span class="kev-badge">⚑ KEV</span>' : ''}
-      </div>
-    `).join('');
-  }
+  // Show/hide filter controls
+  $('cveFilters').style.display = data.vulns.list.length > 3 ? 'flex' : 'none';
+  $('cveFilter').value  = '';
+  $('sevFilter').value  = 'all';
+
+  renderCVEList(data.vulns.list);
 
   $('results').classList.add('visible');
-  $('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  setTimeout(() => {
+    $('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 50);
+}
+
+function setMetric(id, val, cls) {
+  const el = $(id);
+  el.textContent = val;
+  el.className   = 'metric-val ' + cls;
+}
+
+// ---- CVE List rendering ----
+
+function renderCVEList(list) {
+  const cveList = $('cveList');
+
+  if (list.length === 0) {
+    cveList.innerHTML = '<div class="no-cves">✓ No known vulnerabilities found for this version</div>';
+    return;
+  }
+
+  cveList.innerHTML = list.map((v, i) => {
+    const sc  = sevClass(v.severity);
+    const lbl = sevLabel(v.severity);
+    const idDisplay = v.displayId || v.id;
+
+    // If displayId differs from id, show both
+    const idSecondary = (v.displayId && v.displayId !== v.id)
+      ? `<span class="cve-alias">${escHtml(v.id)}</span>`
+      : '';
+
+    const summaryHtml = v.summary
+      ? `<span class="cve-summary">${escHtml(v.summary.slice(0, 100))}${v.summary.length > 100 ? '…' : ''}</span>`
+      : '';
+
+    const linkHtml = v.link
+      ? `<a class="cve-link" href="${escAttr(v.link)}" target="_blank" rel="noopener" title="View on NVD / GitHub Advisories">↗</a>`
+      : '';
+
+    const kevHtml = v.kev ? '<span class="kev-badge">⚑ KEV</span>' : '';
+
+    return `
+      <div class="cve-item" style="animation-delay:${Math.min(i,20) * 0.025}s"
+           data-sev="${sc}" data-id="${escAttr(idDisplay)}" data-summary="${escAttr(v.summary||'')}">
+        <div class="cve-main">
+          <div class="cve-id-group">
+            <span class="cve-id">${escHtml(idDisplay)}</span>
+            ${idSecondary}
+            ${kevHtml}
+            <span class="sev-badge ${sc}">${lbl}</span>
+          </div>
+          ${summaryHtml}
+        </div>
+        ${linkHtml}
+      </div>
+    `;
+  }).join('');
+}
+
+// ---- CVE filtering ----
+
+function filterCVEs() {
+  if (!_lastData) return;
+
+  const text    = $('cveFilter').value.toLowerCase();
+  const sevSel  = $('sevFilter').value;
+
+  let list = _lastData.vulns.list;
+
+  if (sevSel !== 'all') {
+    list = list.filter(v => sevClass(v.severity) === 'sev-' + sevSel);
+  }
+
+  if (text) {
+    list = list.filter(v => {
+      const id  = (v.displayId || v.id).toLowerCase();
+      const sum = (v.summary || '').toLowerCase();
+      const all = (v.allIds || []).join(' ').toLowerCase();
+      return id.includes(text) || sum.includes(text) || all.includes(text);
+    });
+  }
+
+  renderCVEList(list);
+
+  // Update shown count
+  const cveCount = $('cveCount');
+  cveCount.textContent = list.length < _lastData.vulns.total
+    ? `${list.length} shown / ${_lastData.vulns.total} total`
+    : `${_lastData.vulns.total} found`;
 }
 
 // ---- History ----
+
 function addToHistory(data) {
   const entry = {
     tech:    data.target.tech,
     version: data.target.version,
     eco:     $('ecosystem').value,
     risk:    data.risk.level,
+    total:   data.vulns.total,
     ts:      Date.now()
   };
   scanHistory = scanHistory.filter(h => !(h.tech === entry.tech && h.version === entry.version));
   scanHistory.unshift(entry);
-  if (scanHistory.length > 8) scanHistory = scanHistory.slice(0, 8);
+  if (scanHistory.length > 10) scanHistory = scanHistory.slice(0, 10);
   saveHistory(scanHistory);
   renderHistory();
 }
 
 function renderHistory() {
-  if (scanHistory.length === 0) {
-    $('historySection').style.display = 'none';
-    return;
-  }
+  if (scanHistory.length === 0) { $('historySection').style.display = 'none'; return; }
   $('historySection').style.display = 'block';
+
   $('historyList').innerHTML = scanHistory.map(h => `
     <div class="history-item" tabindex="0"
       data-tech="${escAttr(h.tech)}"
@@ -184,98 +263,98 @@ function renderHistory() {
       data-eco="${escAttr(h.eco || 'npm')}">
       <span class="history-tech">${escHtml(h.tech)}</span>
       <span class="history-ver">v${escHtml(h.version)}</span>
+      <span class="history-eco">${escHtml(h.eco || 'npm')}</span>
+      <span class="history-count">${h.total != null ? h.total + ' CVEs' : ''}</span>
       <span class="history-risk risk-badge ${riskClass(h.risk)}">${escHtml(h.risk)}</span>
     </div>
   `).join('');
 
   $('historyList').querySelectorAll('.history-item').forEach(el => {
-    el.addEventListener('click', () => {
+    const go = () => {
       $('tech').value      = el.dataset.tech;
       $('version').value   = el.dataset.ver;
       $('ecosystem').value = el.dataset.eco;
       doScan();
-    });
-    el.addEventListener('keydown', e => {
-      if (e.key === 'Enter') el.click();
-    });
+    };
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
   });
 }
 
 function loadHistory() {
-  try {
-    const raw = localStorage.getItem('eolchecker_history');
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  try { return JSON.parse(localStorage.getItem('eolchecker_history') || '[]'); }
+  catch { return []; }
 }
 
 function saveHistory(h) {
   try { localStorage.setItem('eolchecker_history', JSON.stringify(h)); } catch {}
 }
 
-// ---- Helpers ----
+// ---- Misc helpers ----
+
 function clearForm() {
-  $('tech').value    = '';
+  $('tech').value = '';
   $('version').value = '';
   $('results').classList.remove('visible');
+  _lastData = null;
 }
 
-function showError(msg) {
-  alert('⚠ ' + msg);
+function showBanner(msg, type = 'error') {
+  const b = $('banner');
+  b.textContent = '⚠ ' + msg;
+  b.className   = 'banner banner-' + type + ' visible';
+  setTimeout(() => b.classList.remove('visible'), 6000);
 }
 
-function shake(el) {
-  el.style.borderColor = 'rgba(255,82,82,0.55)';
-  el.style.animation   = 'none';
-  el.offsetHeight; // reflow
-  el.style.animation = 'shake 0.35s ease';
-  setTimeout(() => {
-    el.style.borderColor = '';
-    el.style.animation   = '';
-  }, 1200);
+function flashError(el) {
+  el.style.borderColor = 'rgba(255,82,82,0.6)';
+  el.focus();
+  setTimeout(() => { el.style.borderColor = ''; }, 1400);
 }
 
 function riskClass(level) {
-  const map = { CRITICAL: 'risk-critical', HIGH: 'risk-high', MEDIUM: 'risk-medium', LOW: 'risk-low' };
-  return map[level] || 'risk-low';
+  const m = { CRITICAL:'risk-critical', HIGH:'risk-high', MEDIUM:'risk-medium', LOW:'risk-low' };
+  return m[level] || 'risk-low';
+}
+
+function isCriticalSev(s) {
+  const n = parseFloat(s);
+  return !isNaN(n) ? n >= 9.0 : s === 'CRITICAL';
 }
 
 function sevClass(s) {
   if (!s || s === 'UNKNOWN') return 'sev-unknown';
-  const v = parseFloat(s);
-  if (!isNaN(v)) {
-    if (v >= 9.0) return 'sev-critical';
-    if (v >= 7.0) return 'sev-high';
-    if (v >= 4.0) return 'sev-medium';
+  const n = parseFloat(s);
+  if (!isNaN(n)) {
+    if (n >= 9.0) return 'sev-critical';
+    if (n >= 7.0) return 'sev-high';
+    if (n >= 4.0) return 'sev-medium';
     return 'sev-low';
   }
   const u = s.toUpperCase();
-  if (u === 'CRITICAL')                  return 'sev-critical';
-  if (u === 'HIGH')                      return 'sev-high';
-  if (u === 'MEDIUM' || u === 'MODERATE') return 'sev-medium';
-  if (u === 'LOW')                        return 'sev-low';
+  if (u === 'CRITICAL')                   return 'sev-critical';
+  if (u === 'HIGH')                        return 'sev-high';
+  if (u === 'MEDIUM' || u === 'MODERATE')  return 'sev-medium';
+  if (u === 'LOW')                         return 'sev-low';
   return 'sev-unknown';
 }
 
 function sevLabel(s) {
   if (!s || s === 'UNKNOWN') return 'UNKNOWN';
-  const v = parseFloat(s);
-  if (!isNaN(v)) {
-    if (v >= 9.0) return `CRITICAL ${v.toFixed(1)}`;
-    if (v >= 7.0) return `HIGH ${v.toFixed(1)}`;
-    if (v >= 4.0) return `MEDIUM ${v.toFixed(1)}`;
-    return `LOW ${v.toFixed(1)}`;
+  const n = parseFloat(s);
+  if (!isNaN(n)) {
+    if (n >= 9.0) return `CRITICAL ${n.toFixed(1)}`;
+    if (n >= 7.0) return `HIGH ${n.toFixed(1)}`;
+    if (n >= 4.0) return `MEDIUM ${n.toFixed(1)}`;
+    return `LOW ${n.toFixed(1)}`;
   }
   return s.toUpperCase();
 }
 
 function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function escAttr(s) {
-  return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
