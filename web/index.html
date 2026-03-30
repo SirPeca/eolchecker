@@ -14,6 +14,9 @@
 <div class="noise"></div>
 <div class="glow-bg"></div>
 
+<!-- Error / info banner -->
+<div id="banner" class="banner"></div>
+
 <div class="wrap">
   <header>
     <div class="logo-line">
@@ -23,15 +26,16 @@
     <p class="subtitle">End-of-Life · Vulnerability · Risk Assessment</p>
   </header>
 
+  <!-- Scan form -->
   <div class="card" id="scanCard">
     <div class="scan-grid">
       <div>
         <div class="field-label">Technology</div>
-        <input id="tech" placeholder="e.g. jquery, django, lodash" autocomplete="off" spellcheck="false">
+        <input id="tech" placeholder="e.g. openssl, django, lodash" autocomplete="off" spellcheck="false">
       </div>
       <div>
         <div class="field-label">Version</div>
-        <input id="version" placeholder="e.g. 3.3.1" autocomplete="off" spellcheck="false">
+        <input id="version" placeholder="e.g. 1.0.1" autocomplete="off" spellcheck="false">
       </div>
       <div>
         <div class="field-label">Ecosystem</div>
@@ -46,7 +50,7 @@
           <option value="crates.io">crates.io</option>
           <option value="Hex">Hex</option>
           <option value="Pub">Pub (Dart)</option>
-          <option value="Swift URL">Swift</option>
+          <option value="Linux">Linux / System</option>
         </select>
       </div>
     </div>
@@ -56,40 +60,52 @@
     </div>
     <div class="tag-row">
       <span class="field-label" style="align-self:center;margin:0;margin-right:4px;">Quick:</span>
-      <button class="tag" data-tech="jquery" data-ver="3.3.1" data-eco="npm">jquery 3.3.1</button>
-      <button class="tag" data-tech="django" data-ver="3.0.0" data-eco="PyPI">django 3.0.0</button>
-      <button class="tag" data-tech="lodash" data-ver="4.17.20" data-eco="npm">lodash 4.17.20</button>
-      <button class="tag" data-tech="log4j" data-ver="2.14.1" data-eco="Maven">log4j 2.14.1</button>
-      <button class="tag" data-tech="rails" data-ver="5.0.0" data-eco="RubyGems">rails 5.0.0</button>
+      <button class="tag" data-tech="jquery"  data-ver="3.3.1"  data-eco="npm">jquery 3.3.1</button>
+      <button class="tag" data-tech="django"  data-ver="3.0.0"  data-eco="PyPI">django 3.0.0</button>
+      <button class="tag" data-tech="lodash"  data-ver="4.17.20" data-eco="npm">lodash 4.17.20</button>
+      <button class="tag" data-tech="log4j"   data-ver="2.14.1" data-eco="Maven">log4j 2.14.1</button>
+      <button class="tag" data-tech="openssl" data-ver="1.0.1"  data-eco="Linux">openssl 1.0.1</button>
+      <button class="tag" data-tech="rails"   data-ver="5.0.0"  data-eco="RubyGems">rails 5.0.0</button>
+    </div>
+    <div class="src-note">
+      Sources: <a href="https://osv.dev" target="_blank">OSV.dev</a> (ecosystem + system search) ·
+      <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank">CISA KEV</a> ·
+      <a href="https://endoflife.date" target="_blank">endoflife.date</a> ·
+      CVE links → <a href="https://nvd.nist.gov" target="_blank">NVD</a> /
+      <a href="https://github.com/advisories" target="_blank">GitHub Advisories</a>
     </div>
   </div>
 
+  <!-- Loading -->
   <div class="card loading-overlay" id="loading">
     <div class="spinner"></div>
-    <div class="loading-text" id="loadingText">Consulting OSV · CISA KEV · endoflife.date...</div>
+    <div class="loading-text" id="loadingText">Querying OSV...</div>
   </div>
 
+  <!-- Results -->
   <div class="results" id="results">
     <div class="status-bar">
       <span class="target-label">Scan results for <strong id="resTarget"></strong></span>
       <span class="risk-badge" id="resBadge"></span>
     </div>
 
+    <!-- Metrics row: 3 cards -->
     <div class="metrics-grid">
       <div class="metric">
         <div class="metric-val" id="metCves">—</div>
         <div class="metric-lbl">Total CVEs</div>
       </div>
       <div class="metric">
+        <div class="metric-val" id="metCrit">—</div>
+        <div class="metric-lbl">Critical (≥9.0)</div>
+      </div>
+      <div class="metric">
         <div class="metric-val" id="metKev">—</div>
         <div class="metric-lbl">KEV (Exploited)</div>
       </div>
-      <div class="metric">
-        <div class="metric-val" id="metEolVal">—</div>
-        <div class="metric-lbl">EOL Status</div>
-      </div>
     </div>
 
+    <!-- EOL card -->
     <div class="card results-inner-card">
       <div class="section-title">End-of-Life</div>
       <div class="eol-row">
@@ -98,22 +114,38 @@
       </div>
     </div>
 
+    <!-- CVE list card -->
     <div class="card results-inner-card">
-      <div class="section-title">Vulnerabilities <span id="cveCount" class="cve-count"></span></div>
+      <div class="section-title">
+        Vulnerabilities
+        <span id="cveCount" class="cve-count" style="display:none"></span>
+      </div>
+
+      <!-- Filters (shown when >3 CVEs) -->
+      <div id="cveFilters" class="cve-filters" style="display:none">
+        <input id="cveFilter" class="filter-input" placeholder="Filter by ID or keyword…" spellcheck="false">
+        <select id="sevFilter" class="filter-select">
+          <option value="all">All severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="unknown">Unknown</option>
+        </select>
+      </div>
+
       <div class="cve-list" id="cveList"></div>
     </div>
   </div>
 
+  <!-- History -->
   <div class="history-section" id="historySection" style="display:none">
     <div class="history-title">⏱ Recent Scans</div>
     <div class="history-list" id="historyList"></div>
   </div>
 
   <div class="footnote">
-    Data sources: <a href="https://osv.dev" target="_blank">OSV.dev</a> ·
-    <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank">CISA KEV</a> ·
-    <a href="https://endoflife.date" target="_blank">endoflife.date</a><br>
-    This tool is informational only. Always verify with official security advisories.
+    Data is informational only. Always verify with official security advisories and vendor bulletins.
   </div>
 </div>
 
