@@ -23,7 +23,7 @@ function normalize(t) {
 }
 
 // ================================
-// OSV
+// OSV (rápido)
 // ================================
 async function getOSV(tech, version, ecosystem) {
   try {
@@ -40,6 +40,28 @@ async function getOSV(tech, version, ecosystem) {
   } catch {
     return [];
   }
+}
+
+// ================================
+// NVD (PRO REAL)
+// ================================
+async function getNVD(tech) {
+  const url = `https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch=${tech}`;
+
+  const data = await safeFetch(url);
+
+  if (!data?.vulnerabilities) return [];
+
+  return data.vulnerabilities.slice(0, 50).map(v => {
+    const cve = v.cve;
+
+    return {
+      id: cve.id,
+      severity: cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore ||
+                cve.metrics?.cvssMetricV30?.[0]?.cvssData?.baseScore ||
+                "UNKNOWN"
+    };
+  });
 }
 
 // ================================
@@ -76,12 +98,23 @@ async function getEOL(tech, version) {
 }
 
 // ================================
-// RISK ENGINE
+// RISK ENGINE PRO
 // ================================
-function calcRisk(vulns) {
+function calcRisk(vulns, eol) {
   if (vulns.some(v => v.kev)) return "CRITICAL";
-  if (vulns.length > 10) return "HIGH";
-  if (vulns.length > 0) return "MEDIUM";
+
+  const scores = vulns
+    .map(v => parseFloat(v.severity))
+    .filter(v => !isNaN(v));
+
+  const max = Math.max(...scores, 0);
+
+  if (eol.status === "EOL" && max >= 7) return "CRITICAL";
+  if (max >= 9) return "CRITICAL";
+  if (max >= 7) return "HIGH";
+  if (max >= 4) return "MEDIUM";
+  if (vulns.length > 0) return "LOW";
+
   return "LOW";
 }
 
@@ -100,29 +133,37 @@ export async function onRequest(context) {
   }
 
   try {
-    console.log("Request:", { tech, version, ecosystem });
-
-    const [osv, kevList, eol] = await Promise.all([
+    const [osv, nvd, kevList, eol] = await Promise.all([
       getOSV(tech, version, ecosystem),
+      getNVD(tech),
       getKEV(),
       getEOL(tech, version)
     ]);
 
-    const vulns = osv.map(v => ({
+    const combined = [...osv, ...nvd];
+
+    const vulns = combined.map(v => ({
       id: v.id,
-      severity: v.severity?.[0]?.score || "UNKNOWN",
+      severity: v.severity || "UNKNOWN",
       kev: kevList.includes(v.id)
     }));
 
-    const risk = calcRisk(vulns);
+    const unique = Object.values(
+      vulns.reduce((acc, v) => {
+        acc[v.id] = v;
+        return acc;
+      }, {})
+    );
+
+    const risk = calcRisk(unique, eol);
 
     return json({
       success: true,
       target: { tech, version },
       eol,
       vulns: {
-        total: vulns.length,
-        list: vulns.slice(0, 20)
+        total: unique.length,
+        list: unique.slice(0, 20)
       },
       risk: { level: risk }
     });
