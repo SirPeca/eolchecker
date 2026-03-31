@@ -1,44 +1,25 @@
 // =========================================
-// EOL & CVE Checker — functions/check.js  v3 HARDENED
+// EOL & CVE Checker — functions/check.js v3
+// Cloudflare Pages Function (edge worker)
 // =========================================
-
-// ---- Security Config ----
-const ALLOWED_ORIGIN = 'https://theeolchecker.pages.dev';
-const RATE_LIMIT = new Map();
-const MAX_REQ = 20;
-const WINDOW_MS = 60000;
 
 // ---- Helpers ----
 
-function jsonResp(data, status = 200, origin = '') {
-  const allowed = origin === ALLOWED_ORIGIN ? origin : ALLOWED_ORIGIN;
-
+function jsonResp(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
-      'Access-Control-Allow-Origin': allowed,
-      'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-      'Referrer-Policy': 'no-referrer',
-      'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none';"
+      'Access-Control-Allow-Origin': '*'
     }
   });
-}
-
-function isValidInput(str) {
-  return /^[a-zA-Z0-9._-]{1,50}$/.test(str);
-}
-
-function normalize(t) {
-  return t.toLowerCase().trim();
 }
 
 async function safeFetch(url, opts = {}) {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(url, {
       ...opts,
@@ -48,11 +29,14 @@ async function safeFetch(url, opts = {}) {
 
     clearTimeout(timer);
     if (!res.ok) return null;
-
     return await res.json();
   } catch {
     return null;
   }
+}
+
+function normalize(t) {
+  return t.toLowerCase().trim();
 }
 
 // ---- OSV ----
@@ -63,7 +47,7 @@ async function osvQuery(packageObj, version, pageToken = null) {
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5000);
+    const timer = setTimeout(() => controller.abort(), 10000);
 
     const res = await fetch('https://api.osv.dev/v1/query', {
       method: 'POST',
@@ -180,11 +164,12 @@ async function getEOL(tech, version) {
 
 // ---- Severity ----
 
-function parseSeverity(v) {
-  const sev = v.severity;
+function parseSeverity(osvVuln) {
+  const sev = osvVuln.severity;
 
   if (sev?.length) {
     for (const s of sev) {
+      if (!s.score) continue;
       const n = parseFloat(s.score);
       if (!isNaN(n)) return n.toFixed(1);
     }
@@ -206,36 +191,18 @@ function calcRisk(vulns, eol) {
 // ---- MAIN ----
 
 export async function onRequest(context) {
-  const origin = context.request.headers.get('Origin') || '';
-  const ip = context.request.headers.get('CF-Connecting-IP') || 'unknown';
-
-  const now = Date.now();
-
-  if (!RATE_LIMIT.has(ip)) RATE_LIMIT.set(ip, []);
-
-  const timestamps = RATE_LIMIT.get(ip).filter(t => now - t < WINDOW_MS);
-  timestamps.push(now);
-  RATE_LIMIT.set(ip, timestamps);
-
-  if (timestamps.length > MAX_REQ) {
-    return jsonResp({ success: false, error: 'Rate limit exceeded' }, 429, origin);
-  }
-
   const url = new URL(context.request.url);
+
   const tech = normalize(url.searchParams.get('tech') || '');
   const version = url.searchParams.get('version') || '';
   const ecosystem = url.searchParams.get('ecosystem') || 'npm';
 
   if (!tech || !version) {
-    return jsonResp({ success: false, error: 'Missing parameters' }, 400, origin);
-  }
-
-  if (!isValidInput(tech) || !isValidInput(version)) {
-    return jsonResp({ success: false, error: 'Invalid input format' }, 400, origin);
+    return jsonResp({ success: false, error: 'Missing parameters: tech and version are required.' }, 400);
   }
 
   try {
-    console.log('[SCAN]', { ip, tech, version, ecosystem });
+    console.log('[SCAN]', { tech, version, ecosystem });
 
     const [osvRaw, kevSet, eol] = await Promise.all([
       getOSV(tech, version, ecosystem),
@@ -260,10 +227,10 @@ export async function onRequest(context) {
         list: vulns.slice(0, 50)
       },
       risk: { level: risk }
-    }, 200, origin);
+    });
 
   } catch (err) {
     console.error('[ERROR]', err);
-    return jsonResp({ success: false, error: 'Internal server error' }, 500, origin);
+    return jsonResp({ success: false, error: err.message }, 500);
   }
 }
