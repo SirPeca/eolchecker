@@ -659,6 +659,7 @@ export async function onRequest(context) {
   const rawTech = url.searchParams.get('tech')      || '';
   const rawVer  = url.searchParams.get('version')   || '';
   const rawEco  = url.searchParams.get('ecosystem') || 'npm';
+  const lang    = url.searchParams.get('lang') === 'es' ? 'es' : 'en';
 
   const techRaw   = sanitizeTech(rawTech);
   const tech      = normalizeTech(techRaw);
@@ -743,7 +744,8 @@ export async function onRequest(context) {
       risk,
       summary,
       suggestion,  // did-you-mean (null if none)
-      meta:        { ms, version:'6.0.0', sources }
+      tactical:    buildTacticalAnalysis(tech, version, sorted, eolData, risk, lang),
+      meta:        { ms, version:'7.0.0', sources }
     };
 
     // § KV CACHE — store result
@@ -763,4 +765,249 @@ export async function onRequest(context) {
     structuredLog('scan_error', { ip, tech, version, error:err.message, ms:Date.now()-t0 });
     return jsonResp({ success:false, error:err.message }, 500);
   }
+}
+
+// =========================================
+// v7: TACTICAL ANALYSIS — Red Team / Blue Team
+// Generates context-aware tactical notes based on scan results.
+// lang: 'en' | 'es'
+// =========================================
+
+function buildTacticalAnalysis(tech, version, vulns, eol, risk, lang) {
+  const es = lang === 'es';
+  const kev    = vulns.filter(v => v.kev);
+  const crit   = vulns.filter(v => numScore(v.severity) >= 9.0);
+  const high   = vulns.filter(v => { const n = numScore(v.severity); return n >= 7.0 && n < 9.0; });
+  const isEOL  = eol.status === 'EOL';
+
+  // ---- RED TEAM (offensive perspective) ----
+  const red = buildRedTeam(tech, version, vulns, kev, crit, high, isEOL, eol, risk, es);
+
+  // ---- BLUE TEAM (defensive perspective) ----
+  const blue = buildBlueTeam(tech, version, vulns, kev, crit, high, isEOL, eol, risk, es);
+
+  return { red, blue };
+}
+
+function buildRedTeam(tech, version, vulns, kev, crit, high, isEOL, eol, risk, es) {
+  const lines = [];
+
+  if (es) {
+    lines.push(`## Análisis Red Team — ${tech} ${version}`);
+    lines.push(`**Superficie de ataque:** ${risk.level === 'CRITICAL' || risk.level === 'HIGH' ? 'Alta' : risk.level === 'MEDIUM' ? 'Moderada' : 'Baja'}`);
+    lines.push('');
+
+    if (kev.length > 0) {
+      lines.push(`### ⚡ Exploits activos (KEV)`);
+      lines.push(`${kev.length} vulnerabilidad${kev.length > 1 ? 'es están siendo' : ' está siendo'} explotada${kev.length > 1 ? 's' : ''} activamente en entornos reales.`);
+      for (const v of kev.slice(0,3)) lines.push(`- **${v.displayId}** (CVSS ${v.severity}) — ${v.summary?.slice(0,80) || 'Sin descripción'}`);
+      lines.push('');
+    }
+
+    if (crit.length > 0) {
+      lines.push(`### 🔴 CVEs críticos (CVSS ≥ 9.0)`);
+      lines.push(`${crit.length} vector${crit.length > 1 ? 'es' : ''} con potencial de compromiso total del sistema.`);
+      for (const v of crit.slice(0,3)) lines.push(`- **${v.displayId}** — CVSS ${v.severity} — ${v.summary?.slice(0,80) || ''}`);
+      lines.push('');
+    }
+
+    if (high.length > 0) {
+      lines.push(`### 🟠 CVEs de alta severidad`);
+      for (const v of high.slice(0,3)) lines.push(`- **${v.displayId}** — CVSS ${v.severity} — ${v.summary?.slice(0,80) || ''}`);
+      lines.push('');
+    }
+
+    if (isEOL) {
+      lines.push(`### 🔓 Ventaja EOL`);
+      lines.push(`Esta versión está fuera de soporte (EOL). No recibirá parches de seguridad futuros.`);
+      if (eol.eolDate) lines.push(`Fin de soporte: ${eol.eolDate}. Versión actual del producto: ${eol.globalLatest || 'desconocida'}.`);
+      lines.push('');
+    }
+
+    if (vulns.length === 0) {
+      lines.push(`### ✓ Sin CVEs conocidos`);
+      lines.push(`No se encontraron vulnerabilidades indexadas. Esto no descarta 0-days o advisories privados.`);
+      lines.push('Recomendado: revisar fuentes adicionales (Snyk, Veracode, vendor advisories).'); 
+    }
+
+    lines.push(`### Recomendación ofensiva`);
+    if (kev.length > 0) lines.push(`Priorizar explotación de CVEs en KEV — tienen PoC público o exploit conocido.`);
+    else if (crit.length > 0) lines.push(`Investigar CVEs críticos para PoC disponible. Buscar en ExploitDB, Metasploit, GitHub.`);
+    else if (isEOL) lines.push(`Foco en enumeración profunda — sin soporte activo, futuras vulnerabilidades no serán parcheadas.`);
+    else lines.push(`Superficie de ataque limitada. Considerar ataques de cadena de suministro o dependencias transitivas.`);
+
+  } else {
+    lines.push(`## Red Team Analysis — ${tech} ${version}`);
+    lines.push(`**Attack surface:** ${risk.level === 'CRITICAL' || risk.level === 'HIGH' ? 'High' : risk.level === 'MEDIUM' ? 'Moderate' : 'Low'}`);
+    lines.push('');
+
+    if (kev.length > 0) {
+      lines.push(`### ⚡ Active exploits (KEV)`);
+      lines.push(`${kev.length} vulnerabilit${kev.length > 1 ? 'ies are' : 'y is'} actively exploited in the wild.`);
+      for (const v of kev.slice(0,3)) lines.push(`- **${v.displayId}** (CVSS ${v.severity}) — ${v.summary?.slice(0,80) || 'No description'}`);
+      lines.push('');
+    }
+
+    if (crit.length > 0) {
+      lines.push(`### 🔴 Critical CVEs (CVSS ≥ 9.0)`);
+      lines.push(`${crit.length} vector${crit.length > 1 ? 's' : ''} with potential for full system compromise.`);
+      for (const v of crit.slice(0,3)) lines.push(`- **${v.displayId}** — CVSS ${v.severity} — ${v.summary?.slice(0,80) || ''}`);
+      lines.push('');
+    }
+
+    if (high.length > 0) {
+      lines.push(`### 🟠 High severity CVEs`);
+      for (const v of high.slice(0,3)) lines.push(`- **${v.displayId}** — CVSS ${v.severity} — ${v.summary?.slice(0,80) || ''}`);
+      lines.push('');
+    }
+
+    if (isEOL) {
+      lines.push(`### 🔓 EOL advantage`);
+      lines.push(`This version is End-of-Life. No further security patches will be issued.`);
+      if (eol.eolDate) lines.push(`Support ended: ${eol.eolDate}. Latest product version: ${eol.globalLatest || 'unknown'}.`);
+      lines.push('');
+    }
+
+    if (vulns.length === 0) {
+      lines.push(`### ✓ No known CVEs`);
+      lines.push(`No indexed vulnerabilities found. This does not rule out 0-days or private advisories.`);
+      lines.push('Recommended: cross-check with Snyk, Veracode, and vendor security bulletins.');
+    }
+
+    lines.push(`### Offensive recommendation`);
+    if (kev.length > 0) lines.push(`Prioritize KEV CVEs — they have known public exploits or active PoC.`);
+    else if (crit.length > 0) lines.push(`Research critical CVEs for available PoC. Check ExploitDB, Metasploit, GitHub.`);
+    else if (isEOL) lines.push(`Focus on deep enumeration — no active support means future vulnerabilities will go unpatched.`);
+    else lines.push(`Limited attack surface. Consider supply chain attacks or transitive dependency analysis.`);
+  }
+
+  return lines.join('\n');
+}
+
+function buildBlueTeam(tech, version, vulns, kev, crit, high, isEOL, eol, risk, es) {
+  const lines = [];
+  const latest = eol.globalLatest || eol.branchLatest || 'latest stable';
+
+  if (es) {
+    lines.push(`## Análisis Blue Team — ${tech} ${version}`);
+    lines.push(`**Nivel de riesgo:** ${risk.level} (Score: ${risk.score}/100)`);
+    lines.push('');
+
+    lines.push(`### Acciones inmediatas`);
+    if (kev.length > 0) {
+      lines.push(`🚨 **URGENTE:** ${kev.length} CVE${kev.length > 1 ? 's' : ''} actualmente explotado${kev.length > 1 ? 's' : ''} en producción.`);
+      lines.push(`Actualizar a ${latest} inmediatamente. Activar monitoreo de incidentes.`);
+    } else if (crit.length > 0) {
+      lines.push(`⚠️ ${crit.length} vulnerabilidad${crit.length > 1 ? 'es' : ''} crítica${crit.length > 1 ? 's' : ''}. Programar actualización urgente.`);
+    } else if (isEOL) {
+      lines.push(`📋 Versión EOL. Planificar migración a ${latest}.`);
+    } else if (vulns.length === 0) {
+      lines.push(`✅ Sin vulnerabilidades conocidas. Mantener monitoreo periódico.`);
+    } else {
+      lines.push(`📋 ${vulns.length} vulnerabilidad${vulns.length > 1 ? 'es' : ''} de baja-media severidad. Incluir en próximo ciclo de parches.`);
+    }
+    lines.push('');
+
+    lines.push(`### Mitigaciones recomendadas`);
+    if (kev.length > 0 || crit.length > 0) {
+      lines.push(`- Actualizar ${tech} a la versión ${latest}`);
+      lines.push(`- Revisar logs de acceso por indicadores de compromiso (IoC)`);
+      lines.push(`- Aislar sistemas afectados si el riesgo es inmediato`);
+      lines.push(`- Aplicar WAF rules específicas para CVEs listados`);
+    }
+    if (isEOL) {
+      lines.push(`- Migrar a una versión con soporte activo (${latest})`);
+      lines.push(`- Documentar deuda técnica y timeline de migración`);
+    }
+    if (high.length > 0) {
+      lines.push(`- Evaluar mitigaciones temporales (workarounds) para CVEs HIGH`);
+      lines.push(`- Aumentar nivel de logging en componentes afectados`);
+    }
+    if (vulns.length === 0 && !isEOL) {
+      lines.push(`- Continuar con política de actualizaciones periódicas`);
+      lines.push(`- Suscribir a alertas de seguridad del vendor`);
+    }
+    lines.push('');
+
+    lines.push(`### Monitoreo y detección`);
+    lines.push(`- Configurar alertas en SIEM para patrones de explotación`);
+    lines.push(`- Revisar reglas de IDS/IPS para ${tech}`);
+    if (kev.length > 0) {
+      for (const v of kev.slice(0,2)) lines.push(`- Buscar IoCs asociados a ${v.displayId} en logs`);
+    }
+    lines.push('');
+
+    lines.push(`### Métricas de riesgo`);
+    lines.push(`| Indicador | Valor |`);
+    lines.push(`|-----------|-------|`);
+    lines.push(`| Risk Score | ${risk.score}/100 |`);
+    lines.push(`| CVEs totales | ${vulns.length} |`);
+    lines.push(`| Críticos (≥9.0) | ${crit.length} |`);
+    lines.push(`| High (7.0–8.9) | ${high.length} |`);
+    lines.push(`| KEV (explotados) | ${kev.length} |`);
+    lines.push(`| Estado EOL | ${isEOL ? '⛔ EOL' : '✅ Con soporte'} |`);
+    lines.push(`| Versión latest | ${latest} |`);
+
+  } else {
+    lines.push(`## Blue Team Analysis — ${tech} ${version}`);
+    lines.push(`**Risk level:** ${risk.level} (Score: ${risk.score}/100)`);
+    lines.push('');
+
+    lines.push(`### Immediate actions`);
+    if (kev.length > 0) {
+      lines.push(`🚨 **URGENT:** ${kev.length} CVE${kev.length > 1 ? 's' : ''} currently exploited in the wild.`);
+      lines.push(`Upgrade to ${latest} immediately. Activate incident monitoring.`);
+    } else if (crit.length > 0) {
+      lines.push(`⚠️ ${crit.length} critical vulnerabilit${crit.length > 1 ? 'ies' : 'y'}. Schedule urgent patching.`);
+    } else if (isEOL) {
+      lines.push(`📋 EOL version. Plan migration to ${latest}.`);
+    } else if (vulns.length === 0) {
+      lines.push(`✅ No known vulnerabilities. Maintain periodic monitoring.`);
+    } else {
+      lines.push(`📋 ${vulns.length} low-to-medium severity vulnerabilit${vulns.length > 1 ? 'ies' : 'y'}. Include in next patch cycle.`);
+    }
+    lines.push('');
+
+    lines.push(`### Recommended mitigations`);
+    if (kev.length > 0 || crit.length > 0) {
+      lines.push(`- Upgrade ${tech} to version ${latest}`);
+      lines.push(`- Review access logs for indicators of compromise (IoC)`);
+      lines.push(`- Isolate affected systems if risk is immediate`);
+      lines.push(`- Apply WAF rules targeting the listed CVEs`);
+    }
+    if (isEOL) {
+      lines.push(`- Migrate to an actively supported version (${latest})`);
+      lines.push(`- Document technical debt and migration timeline`);
+    }
+    if (high.length > 0) {
+      lines.push(`- Evaluate temporary mitigations (workarounds) for HIGH CVEs`);
+      lines.push(`- Increase logging level on affected components`);
+    }
+    if (vulns.length === 0 && !isEOL) {
+      lines.push(`- Continue with periodic update policy`);
+      lines.push(`- Subscribe to vendor security advisories`);
+    }
+    lines.push('');
+
+    lines.push(`### Monitoring and detection`);
+    lines.push(`- Configure SIEM alerts for exploitation patterns`);
+    lines.push(`- Review IDS/IPS rules for ${tech}`);
+    if (kev.length > 0) {
+      for (const v of kev.slice(0,2)) lines.push(`- Search for IoCs associated with ${v.displayId} in logs`);
+    }
+    lines.push('');
+
+    lines.push(`### Risk metrics`);
+    lines.push(`| Indicator | Value |`);
+    lines.push(`|-----------|-------|`);
+    lines.push(`| Risk Score | ${risk.score}/100 |`);
+    lines.push(`| Total CVEs | ${vulns.length} |`);
+    lines.push(`| Critical (≥9.0) | ${crit.length} |`);
+    lines.push(`| High (7.0–8.9) | ${high.length} |`);
+    lines.push(`| KEV (exploited) | ${kev.length} |`);
+    lines.push(`| EOL status | ${isEOL ? '⛔ EOL' : '✅ Supported'} |`);
+    lines.push(`| Latest version | ${latest} |`);
+  }
+
+  return lines.join('\n');
 }
