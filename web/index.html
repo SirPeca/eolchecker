@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:;">
+  content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none';">
 <title>EOL &amp; CVE Checker</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -41,6 +41,7 @@
       <div>
         <div class="field-label">Ecosystem</div>
         <select id="ecosystem">
+          <option value="auto">⚡ Auto-detect</option>
           <option value="npm">npm</option>
           <option value="PyPI">PyPI</option>
           <option value="Maven">Maven</option>
@@ -62,24 +63,27 @@
     </div>
     <div class="tag-row">
       <span class="field-label" style="align-self:center;margin:0;margin-right:4px;">Quick:</span>
-      <button class="tag" data-tech="jquery"  data-ver="3.3.1"  data-eco="npm">jquery 3.3.1</button>
-      <button class="tag" data-tech="django"  data-ver="3.0.0"  data-eco="PyPI">django 3.0.0</button>
+      <button class="tag" data-tech="jquery"  data-ver="3.3.1"   data-eco="npm">jquery 3.3.1</button>
+      <button class="tag" data-tech="django"  data-ver="3.0.0"   data-eco="PyPI">django 3.0.0</button>
       <button class="tag" data-tech="lodash"  data-ver="4.17.20" data-eco="npm">lodash 4.17.20</button>
-      <button class="tag" data-tech="log4j"   data-ver="2.14.1" data-eco="Maven">log4j 2.14.1</button>
-      <button class="tag" data-tech="openssl" data-ver="1.0.1"  data-eco="Linux">openssl 1.0.1</button>
-      <button class="tag" data-tech="rails"   data-ver="5.0.0"  data-eco="RubyGems">rails 5.0.0</button>
+      <button class="tag" data-tech="log4j"   data-ver="2.14.1"  data-eco="Maven">log4j 2.14.1</button>
+      <button class="tag" data-tech="openssl" data-ver="1.0.1"   data-eco="Linux">openssl 1.0.1</button>
+      <button class="tag" data-tech="rails"   data-ver="5.0.0"   data-eco="RubyGems">rails 5.0.0</button>
     </div>
     <div class="src-note">
-      Sources: <a href="https://osv.dev" target="_blank">OSV.dev</a> ·
-      <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank">CISA KEV</a> ·
-      <a href="https://endoflife.date" target="_blank">endoflife.date</a> ·
-      CVE links → <a href="https://nvd.nist.gov" target="_blank">NVD</a> /
-      <a href="https://github.com/advisories" target="_blank">GitHub Advisories</a>
+      Sources: <a href="https://osv.dev" target="_blank" rel="noopener noreferrer">OSV.dev</a> ·
+      <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener noreferrer">CISA KEV</a> ·
+      <a href="https://endoflife.date" target="_blank" rel="noopener noreferrer">endoflife.date</a> ·
+      CVE links → <a href="https://nvd.nist.gov" target="_blank" rel="noopener noreferrer">NVD</a> /
+      <a href="https://github.com/advisories" target="_blank" rel="noopener noreferrer">GitHub Advisories</a>
     </div>
   </div>
 
-  <!-- Version intelligence warning -->
+  <!-- Version warning -->
   <div id="versionWarning" class="version-warning" style="display:none"></div>
+
+  <!-- Non-trackable technology info box -->
+  <div id="nonTrackableBox" class="non-trackable-box" style="display:none"></div>
 
   <!-- Loading -->
   <div class="card loading-overlay" id="loading">
@@ -90,11 +94,14 @@
   <!-- Results -->
   <div class="results" id="results">
     <div class="status-bar">
-      <span class="target-label">Scan results for <strong id="resTarget"></strong></span>
+      <div class="status-left">
+        <span class="target-label">Scan results for <strong id="resTarget"></strong></span>
+        <span id="scanMs" class="scan-ms" style="display:none"></span>
+      </div>
       <span class="risk-badge" id="resBadge"></span>
     </div>
 
-    <!-- Risk score bar -->
+    <!-- Risk score -->
     <div class="risk-score-card card">
       <div class="risk-score-row">
         <div class="risk-score-left">
@@ -110,11 +117,10 @@
           </div>
         </div>
       </div>
-      <!-- Risk breakdown factors -->
       <div id="riskBreakdown" class="risk-breakdown" style="display:none"></div>
     </div>
 
-    <!-- Metrics row -->
+    <!-- Metrics -->
     <div class="metrics-grid">
       <div class="metric">
         <div class="metric-val" id="metCves">—</div>
