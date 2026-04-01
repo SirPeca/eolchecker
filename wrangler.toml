@@ -1,3 +1,11 @@
 name = "eol-cve-checker"
 compatibility_date = "2026-02-02"
 pages_build_output_dir = "web"
+
+# ---- Rate limiting via KV (optional) ----
+# 1. Create a KV namespace in your Cloudflare dashboard
+# 2. Uncomment and replace YOUR_KV_ID with the actual ID
+#
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT"
+# id = "YOUR_KV_ID"
