@@ -1,5 +1,5 @@
 /* =========================================
-   EOL & CVE Checker — app.js  v4
+   EOL & CVE Checker — app.js  v5
    ========================================= */
 
 const $ = id => document.getElementById(id);
@@ -14,7 +14,6 @@ function bindEvents() {
   $('btn').addEventListener('click', doScan);
   $('btnClear').addEventListener('click', clearForm);
   $('btnExport').addEventListener('click', exportReport);
-
   document.querySelectorAll('.tag').forEach(t => {
     t.addEventListener('click', () => {
       $('tech').value      = t.dataset.tech;
@@ -22,11 +21,9 @@ function bindEvents() {
       $('ecosystem').value = t.dataset.eco;
     });
   });
-
   ['tech', 'version'].forEach(id => {
     $(id).addEventListener('keydown', e => { if (e.key === 'Enter') doScan(); });
   });
-
   $('cveFilter').addEventListener('input', filterCVEs);
   $('sevFilter').addEventListener('change', filterCVEs);
 }
@@ -42,13 +39,14 @@ async function doScan() {
 
   $('results').classList.remove('visible');
   $('versionWarning').style.display = 'none';
+  $('nonTrackableBox').style.display = 'none';
   $('loading').classList.add('visible');
   $('btn').disabled = true;
 
   const msgs = [
     'Validating version against registry...',
-    'Querying OSV — with ecosystem...',
-    'Querying OSV — system-level search...',
+    'Querying OSV vulnerability database...',
+    ecosystem === 'auto' ? 'Auto-detecting ecosystem (npm, PyPI, Maven, Go…)' : `Querying OSV [${ecosystem}]…`,
     'Checking CISA Known Exploited Vulnerabilities...',
     'Verifying end-of-life status...',
     'Computing risk score...',
@@ -57,9 +55,14 @@ async function doScan() {
   let mi = 0;
   const ticker = setInterval(() => { $('loadingText').textContent = msgs[mi++ % msgs.length]; }, 850);
 
+  // § 6.1 Fetch with timeout
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 20000);
+
   try {
     const url = `/check?tech=${encodeURIComponent(tech)}&version=${encodeURIComponent(version)}&ecosystem=${encodeURIComponent(ecosystem)}`;
-    const res  = await fetch(url);
+    const res  = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
     const text = await res.text();
 
     clearInterval(ticker);
@@ -70,7 +73,16 @@ async function doScan() {
     try { data = JSON.parse(text); }
     catch { showBanner('Backend returned HTML instead of JSON. Is the Worker deployed?', 'error'); return; }
 
-    if (!data.success) { showBanner(data.error || 'Unknown backend error.', 'error'); return; }
+    if (!data.success) {
+      showBanner(data.error || 'Unknown backend error.', 'error');
+      return;
+    }
+
+    // § 2 Non-trackable technology handling
+    if (data.nonTrackable) {
+      renderNonTrackable(data);
+      return;
+    }
 
     _lastData = data;
     renderVersionWarning(data);
@@ -78,36 +90,51 @@ async function doScan() {
     addToHistory(data);
 
   } catch (err) {
+    clearTimeout(timeoutId);
     clearInterval(ticker);
     $('loading').classList.remove('visible');
     $('btn').disabled = false;
-    showBanner('Network error: ' + err.message, 'error');
+    if (err.name === 'AbortError') {
+      showBanner('Request timed out after 20 seconds. Try again.', 'error');
+    } else {
+      showBanner('Network error: ' + err.message, 'error');
+    }
   }
 }
 
-// ---- Version Intelligence warning ----
+// ---- Non-trackable box ----
+
+function renderNonTrackable(data) {
+  const box = $('nonTrackableBox');
+  box.innerHTML = `
+    <div class="nt-icon">ℹ</div>
+    <div class="nt-body">
+      <strong>${escHtml(data.target.tech)}</strong> is not trackable via CVE databases.
+      <br>${escHtml(data.note)}
+      <br><span class="nt-hint">This is expected for SaaS services, CDN scripts, cloud platforms, and tracking pixels.
+      Vulnerabilities in these services are managed directly by the provider — check their security bulletins.</span>
+    </div>
+  `;
+  box.style.display = 'flex';
+}
+
+// ---- Version warning ----
 
 function renderVersionWarning(data) {
   const vi = data.versionInfo;
   if (!vi || vi.exists === true) { $('versionWarning').style.display = 'none'; return; }
 
   const box = $('versionWarning');
-  let html = `<span class="vw-icon">⚠</span>
+  let html  = `<span class="vw-icon">⚠</span>
     <div class="vw-body">
       <strong>Version not found in ${escHtml(data.target.ecosystem)} registry.</strong>
       Results may be inaccurate or based on the closest available version.`;
 
-  if (vi.closest) {
-    html += `<br>Closest version found: <button class="vw-btn" onclick="useVersion('${escAttr(vi.closest)}')">${escHtml(vi.closest)}</button>`;
-  }
-
+  if (vi.closest) html += `<br>Closest: <button class="vw-btn" onclick="useVersion('${escAttr(vi.closest)}')">${escHtml(vi.closest)}</button>`;
   if (vi.recentVersions?.length) {
-    html += `<br><span class="vw-label">Recent versions:</span> ` +
-      vi.recentVersions.map(v =>
-        `<button class="vw-btn" onclick="useVersion('${escAttr(v)}')">${escHtml(v)}</button>`
-      ).join(' ');
+    html += `<br><span class="vw-label">Recent:</span> ` +
+      vi.recentVersions.map(v => `<button class="vw-btn" onclick="useVersion('${escAttr(v)}')">${escHtml(v)}</button>`).join(' ');
   }
-
   html += '</div>';
   box.innerHTML = html;
   box.style.display = 'flex';
@@ -123,23 +150,34 @@ window.useVersion = function(v) {
 
 function renderResults(data) {
   $('resTarget').textContent = `${data.target.tech} ${data.target.version}`;
+  if (data.target.ecosystem === 'auto') {
+    $('resTarget').textContent += ' (auto)';
+  }
 
   const badge = $('resBadge');
   badge.textContent = data.risk.level;
   badge.className   = 'risk-badge ' + riskClass(data.risk.level);
 
-  // Risk score dial
-  const score = data.risk.score || 0;
-  $('riskScore').textContent = score;
-  $('riskScoreBar').style.width = score + '%';
-  $('riskScoreBar').className = 'risk-bar-fill ' + riskClass(data.risk.level).replace('risk-','bar-');
+  // Scan time badge
+  if (data.meta?.ms) {
+    $('scanMs').textContent = `${data.meta.ms}ms`;
+    $('scanMs').style.display = '';
+  }
 
-  // Metrics
   const kevCount  = data.vulns.list.filter(v => v.kev).length;
   const critCount = data.vulns.list.filter(v => numSev(v.severity) >= 9.0).length;
-  setMetric('metCves', data.vulns.total,  data.vulns.total > 0 ? 'col-bad'  : 'col-ok');
-  setMetric('metCrit', critCount,          critCount > 0        ? 'col-bad'  : 'col-ok');
-  setMetric('metKev',  kevCount,           kevCount > 0         ? 'col-bad'  : 'col-ok');
+
+  setMetric('metCves', data.vulns.total, data.vulns.total > 0 ? 'col-bad' : 'col-ok');
+  setMetric('metCrit', critCount,         critCount > 0        ? 'col-bad' : 'col-ok');
+  setMetric('metKev',  kevCount,          kevCount > 0         ? 'col-bad' : 'col-ok');
+
+  // Risk score bar
+  const score = data.risk.score || 0;
+  $('riskScore').textContent = score;
+  $('riskScoreBar').style.width     = score + '%';
+  $('riskScoreBar').className = 'risk-bar-fill ' + riskClass(data.risk.level).replace('risk-','bar-');
+
+  renderRiskBreakdown(data.risk.factors || []);
 
   // EOL
   const eolV  = data.eol.status;
@@ -153,37 +191,29 @@ function renderResults(data) {
   if (data.eol.lts)     eolMeta += `&nbsp;&nbsp;·&nbsp;&nbsp;<span class="badge-lts">LTS</span>`;
   $('eolLatest').innerHTML = eolMeta;
 
-  // Risk breakdown factors
-  renderRiskBreakdown(data.risk.factors || []);
-
-  // CVE count
   const cveCount = $('cveCount');
   if (data.vulns.list.length > 0) {
     cveCount.textContent = data.vulns.total > data.vulns.list.length
       ? `${data.vulns.list.length} shown / ${data.vulns.total} total`
       : `${data.vulns.total} found`;
     cveCount.style.display = '';
-  } else {
-    cveCount.style.display = 'none';
-  }
+  } else { cveCount.style.display = 'none'; }
 
   $('cveFilters').style.display = data.vulns.list.length > 3 ? 'flex' : 'none';
   $('cveFilter').value = '';
   $('sevFilter').value = 'all';
 
-  renderCVEList(data.vulns.list);
+  // § 6.2 Response size guard
+  const safeList = (data.vulns.list || []).slice(0, 100);
+  renderCVEList(safeList);
 
-  // Show export button
   $('btnExport').style.display = '';
-
   $('results').classList.add('visible');
   setTimeout(() => $('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 }
 
 function setMetric(id, val, cls) {
-  const el = $(id);
-  el.textContent = val;
-  el.className   = 'metric-val ' + cls;
+  const el = $(id); el.textContent = val; el.className = 'metric-val ' + cls;
 }
 
 // ---- Risk Breakdown ----
@@ -197,8 +227,7 @@ function renderRiskBreakdown(factors) {
       <span class="factor-dot factor-${f.level}"></span>
       <span class="factor-label">${escHtml(f.label)}</span>
       <span class="factor-pts">+${f.points}</span>
-    </div>
-  `).join('');
+    </div>`).join('');
 }
 
 // ---- CVE List ----
@@ -209,28 +238,23 @@ function renderCVEList(list) {
     cveList.innerHTML = '<div class="no-cves">✓ No known vulnerabilities found for this version</div>';
     return;
   }
-
   cveList.innerHTML = list.map((v, i) => {
     const sc        = sevClass(v.severity);
     const lbl       = sevLabel(v.severity);
     const idDisplay = v.displayId || v.id;
-    const idSecondary = (v.displayId && v.displayId !== v.id)
-      ? `<span class="cve-alias">${escHtml(v.id)}</span>` : '';
-    const summaryHtml = v.summary
-      ? `<span class="cve-summary">${escHtml(v.summary.slice(0, 110))}${v.summary.length > 110 ? '…' : ''}</span>` : '';
-    const linkHtml = v.link
-      ? `<a class="cve-link" href="${escAttr(v.link)}" target="_blank" rel="noopener" title="View on NVD / GitHub Advisories">↗</a>` : '';
-    const kevHtml  = v.kev ? '<span class="kev-badge">⚑ KEV</span>' : '';
-    const pubDate  = v.published ? `<span class="cve-date">${v.published.slice(0,10)}</span>` : '';
-
+    const idSecondary  = (v.displayId && v.displayId !== v.id) ? `<span class="cve-alias">${escHtml(v.id)}</span>` : '';
+    const summaryHtml  = v.summary ? `<span class="cve-summary">${escHtml(v.summary.slice(0,110))}${v.summary.length>110?'…':''}</span>` : '';
+    // § 6.3 noopener noreferrer
+    const linkHtml     = v.link ? `<a class="cve-link" href="${escAttr(v.link)}" target="_blank" rel="noopener noreferrer" title="View on NVD / GitHub Advisories">↗</a>` : '';
+    const kevHtml      = v.kev  ? '<span class="kev-badge">⚑ KEV</span>' : '';
+    const pubDate      = v.published ? `<span class="cve-date">${v.published.slice(0,10)}</span>` : '';
     return `
       <div class="cve-item" style="animation-delay:${Math.min(i,20)*0.025}s"
            data-sev="${sc}" data-id="${escAttr(idDisplay)}" data-summary="${escAttr(v.summary||'')}">
         <div class="cve-main">
           <div class="cve-id-group">
             <span class="cve-id">${escHtml(idDisplay)}</span>
-            ${idSecondary}
-            ${kevHtml}
+            ${idSecondary}${kevHtml}
             <span class="sev-badge ${sc}">${lbl}</span>
             ${pubDate}
           </div>
@@ -241,37 +265,37 @@ function renderCVEList(list) {
   }).join('');
 }
 
-// ---- CVE filter ----
+// ---- Filter ----
 
 function filterCVEs() {
   if (!_lastData) return;
   const text   = $('cveFilter').value.toLowerCase();
   const sevSel = $('sevFilter').value;
-  let list = _lastData.vulns.list;
+  let list = (_lastData.vulns.list || []).slice(0, 100);
   if (sevSel !== 'all') list = list.filter(v => sevClass(v.severity) === 'sev-' + sevSel);
-  if (text) list = list.filter(v => {
-    return (v.displayId||v.id).toLowerCase().includes(text) ||
-           (v.summary||'').toLowerCase().includes(text) ||
-           (v.allIds||[]).join(' ').toLowerCase().includes(text);
-  });
+  if (text) list = list.filter(v =>
+    (v.displayId||v.id).toLowerCase().includes(text) ||
+    (v.summary||'').toLowerCase().includes(text) ||
+    (v.allIds||[]).join(' ').toLowerCase().includes(text)
+  );
   renderCVEList(list);
   $('cveCount').textContent = list.length < _lastData.vulns.total
     ? `${list.length} shown / ${_lastData.vulns.total} total`
     : `${_lastData.vulns.total} found`;
 }
 
-// ---- Export Report ----
+// ---- Export ----
 
 function exportReport() {
   if (!_lastData) return;
   const s = _lastData.summary;
   const r = _lastData.risk;
-  const vulns = _lastData.vulns.list;
+  const vulns = (_lastData.vulns.list || []).slice(0, 100);
 
   const lines = [
     '='.repeat(60),
     '  SECURITY ASSESSMENT REPORT',
-    '  EOL & CVE Checker',
+    '  EOL & CVE Checker  v5',
     '='.repeat(60),
     '',
     `Date:          ${s.date}`,
@@ -290,9 +314,9 @@ function exportReport() {
     `  High:        ${s.highVulns}`,
     `  KEV (active):${s.kevVulns}`,
     '',
-    `EOL Status:    ${s.eolStatus.toUpperCase()}`,
-    s.eolDate      ? `EOL Date:      ${s.eolDate}` : '',
-    s.latestVersion? `Latest Ver:    ${s.latestVersion}` : '',
+    `EOL Status:    ${s.eolStatus?.toUpperCase()}`,
+    s.eolDate       ? `EOL Date:      ${s.eolDate}`       : '',
+    s.latestVersion ? `Latest Ver:    ${s.latestVersion}` : '',
     '',
     '-'.repeat(60),
     'RISK FACTORS',
@@ -312,49 +336,44 @@ function exportReport() {
     '',
     ...vulns.map((v, i) => [
       `${String(i+1).padStart(3)}. ${v.displayId || v.id}`,
-      `     Severity: ${v.severity}${v.kev ? '  ⚑ ACTIVELY EXPLOITED (KEV)' : ''}`,
-      v.summary ? `     Summary:  ${v.summary.slice(0, 100)}` : '',
-      `     Link:     ${v.link || 'N/A'}`,
+      `     Severity:  ${v.severity}${v.kev ? '  ⚑ ACTIVELY EXPLOITED (KEV)' : ''}`,
+      v.published ? `     Published: ${v.published.slice(0,10)}` : '',
+      v.summary   ? `     Summary:   ${v.summary.slice(0, 100)}` : '',
+      `     Reference: ${v.link || 'N/A'}`,
       ''
     ].filter(Boolean)).flat(),
     '='.repeat(60),
-    'Generated by EOL & CVE Checker — https://theeolchecker.pages.dev',
+    'Generated by EOL & CVE Checker v5 — https://theeolchecker.pages.dev',
     '='.repeat(60),
   ].filter(l => l !== undefined).join('\n');
 
   const blob = new Blob([lines], { type: 'text/plain;charset=utf-8' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `security-report-${_lastData.target.tech}-${_lastData.target.version}-${s.date}.txt`;
+  const a    = Object.assign(document.createElement('a'), {
+    href:     URL.createObjectURL(blob),
+    download: `security-report-${_lastData.target.tech}-${_lastData.target.version}-${s.date}.txt`
+  });
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-
+  URL.revokeObjectURL(a.href);
   showBanner('Report downloaded ✓', 'info');
 }
 
 function wordWrap(text, width) {
-  const words = text.split(' ');
-  const lines = [];
-  let current = '';
+  const words = (text||'').split(' ');
+  const lines = []; let cur = '';
   for (const w of words) {
-    if ((current + ' ' + w).trim().length > width) { lines.push(current); current = w; }
-    else current = (current + ' ' + w).trim();
+    if ((cur+' '+w).trim().length > width) { lines.push(cur); cur = w; }
+    else cur = (cur+' '+w).trim();
   }
-  if (current) lines.push(current);
+  if (cur) lines.push(cur);
   return lines;
 }
 
 // ---- History ----
 
 function addToHistory(data) {
-  const entry = {
-    tech: data.target.tech, version: data.target.version,
-    eco:  $('ecosystem').value, risk: data.risk.level,
-    score: data.risk.score, total: data.vulns.total, ts: Date.now()
-  };
+  const entry = { tech: data.target.tech, version: data.target.version, eco: $('ecosystem').value, risk: data.risk.level, score: data.risk.score, total: data.vulns.total, ts: Date.now() };
   scanHistory = scanHistory.filter(h => !(h.tech === entry.tech && h.version === entry.version));
   scanHistory.unshift(entry);
   if (scanHistory.length > 10) scanHistory = scanHistory.slice(0, 10);
@@ -371,17 +390,13 @@ function renderHistory() {
       <span class="history-tech">${escHtml(h.tech)}</span>
       <span class="history-ver">v${escHtml(h.version)}</span>
       <span class="history-eco">${escHtml(h.eco||'npm')}</span>
-      <span class="history-count">${h.total != null ? h.total+' CVEs' : ''}</span>
+      <span class="history-count">${h.total!=null?h.total+' CVEs':''}</span>
       <span class="history-risk risk-badge ${riskClass(h.risk)}">${escHtml(h.risk)}</span>
     </div>`).join('');
-
   $('historyList').querySelectorAll('.history-item').forEach(el => {
-    const go = () => {
-      $('tech').value = el.dataset.tech; $('version').value = el.dataset.ver;
-      $('ecosystem').value = el.dataset.eco; doScan();
-    };
+    const go = () => { $('tech').value=el.dataset.tech; $('version').value=el.dataset.ver; $('ecosystem').value=el.dataset.eco; doScan(); };
     el.addEventListener('click', go);
-    el.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    el.addEventListener('keydown', e => { if (e.key==='Enter') go(); });
   });
 }
 
@@ -393,21 +408,23 @@ function saveHistory(h) { try { localStorage.setItem('eolchecker_history', JSON.
 function clearForm() {
   $('tech').value = ''; $('version').value = '';
   $('results').classList.remove('visible');
-  $('versionWarning').style.display = 'none';
-  $('btnExport').style.display = 'none';
+  $('versionWarning').style.display   = 'none';
+  $('nonTrackableBox').style.display  = 'none';
+  $('btnExport').style.display        = 'none';
+  $('scanMs').style.display           = 'none';
   _lastData = null;
 }
 
-function showBanner(msg, type = 'error') {
+function showBanner(msg, type='error') {
   const b = $('banner');
-  b.textContent = (type === 'error' ? '⚠ ' : '✓ ') + msg;
-  b.className   = 'banner banner-' + type + ' visible';
+  b.textContent = (type==='error'?'⚠ ':'✓ ') + msg;
+  b.className   = 'banner banner-'+type+' visible';
   setTimeout(() => b.classList.remove('visible'), 5000);
 }
 
 function flashError(el) {
-  el.style.borderColor = 'rgba(255,82,82,0.6)'; el.focus();
-  setTimeout(() => { el.style.borderColor = ''; }, 1400);
+  el.style.borderColor='rgba(255,82,82,0.6)'; el.focus();
+  setTimeout(()=>{ el.style.borderColor=''; }, 1400);
 }
 
 function numSev(s) {
@@ -416,21 +433,21 @@ function numSev(s) {
 }
 
 function riskClass(level) {
-  return { CRITICAL:'risk-critical', HIGH:'risk-high', MEDIUM:'risk-medium', LOW:'risk-low' }[level] || 'risk-low';
+  return {CRITICAL:'risk-critical',HIGH:'risk-high',MEDIUM:'risk-medium',LOW:'risk-low'}[level]||'risk-low';
 }
 
 function sevClass(s) {
-  if (!s || s==='UNKNOWN') return 'sev-unknown';
+  if (!s||s==='UNKNOWN') return 'sev-unknown';
   const n = parseFloat(s);
   if (!isNaN(n)) { if(n>=9) return 'sev-critical'; if(n>=7) return 'sev-high'; if(n>=4) return 'sev-medium'; return 'sev-low'; }
   const u = s.toUpperCase();
-  if (u==='CRITICAL') return 'sev-critical'; if (u==='HIGH') return 'sev-high';
-  if (u==='MEDIUM'||u==='MODERATE') return 'sev-medium'; if (u==='LOW') return 'sev-low';
+  if(u==='CRITICAL') return 'sev-critical'; if(u==='HIGH') return 'sev-high';
+  if(u==='MEDIUM'||u==='MODERATE') return 'sev-medium'; if(u==='LOW') return 'sev-low';
   return 'sev-unknown';
 }
 
 function sevLabel(s) {
-  if (!s || s==='UNKNOWN') return 'UNKNOWN';
+  if (!s||s==='UNKNOWN') return 'UNKNOWN';
   const n = parseFloat(s);
   if (!isNaN(n)) { if(n>=9) return `CRITICAL ${n.toFixed(1)}`; if(n>=7) return `HIGH ${n.toFixed(1)}`; if(n>=4) return `MEDIUM ${n.toFixed(1)}`; return `LOW ${n.toFixed(1)}`; }
   return s.toUpperCase();
