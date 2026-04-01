@@ -15,7 +15,6 @@
 <body>
 <div class="noise"></div>
 <div class="glow-bg"></div>
-
 <div id="banner" class="banner"></div>
 
 <div class="wrap">
@@ -25,6 +24,8 @@
       <h1>EOL &amp; CVE Checker</h1>
     </div>
     <p class="subtitle">End-of-Life · Vulnerability · Risk Assessment</p>
+    <!-- Visit counter -->
+    <span id="visitCounter" class="visit-counter" style="display:none"></span>
   </header>
 
   <!-- Scan form -->
@@ -32,7 +33,7 @@
     <div class="scan-grid">
       <div>
         <div class="field-label">Technology</div>
-        <input id="tech" placeholder="e.g. openssl, django, lodash" autocomplete="off" spellcheck="false">
+        <input id="tech" placeholder="e.g. openssl, react, lodash" autocomplete="off" spellcheck="false">
       </div>
       <div>
         <div class="field-label">Version</div>
@@ -63,26 +64,29 @@
     </div>
     <div class="tag-row">
       <span class="field-label" style="align-self:center;margin:0;margin-right:4px;">Quick:</span>
-      <button class="tag" data-tech="jquery"  data-ver="3.3.1"   data-eco="npm">jquery 3.3.1</button>
-      <button class="tag" data-tech="django"  data-ver="3.0.0"   data-eco="PyPI">django 3.0.0</button>
-      <button class="tag" data-tech="lodash"  data-ver="4.17.20" data-eco="npm">lodash 4.17.20</button>
-      <button class="tag" data-tech="log4j"   data-ver="2.14.1"  data-eco="Maven">log4j 2.14.1</button>
-      <button class="tag" data-tech="openssl" data-ver="1.0.1"   data-eco="Linux">openssl 1.0.1</button>
-      <button class="tag" data-tech="rails"   data-ver="5.0.0"   data-eco="RubyGems">rails 5.0.0</button>
+      <button class="tag" data-tech="jquery"   data-ver="3.3.1"  data-eco="npm">jquery 3.3.1</button>
+      <button class="tag" data-tech="django"   data-ver="3.0.0"  data-eco="PyPI">django 3.0.0</button>
+      <button class="tag" data-tech="lodash"   data-ver="4.17.20" data-eco="npm">lodash 4.17.20</button>
+      <button class="tag" data-tech="log4j"    data-ver="2.14.1" data-eco="Maven">log4j 2.14.1</button>
+      <button class="tag" data-tech="openssl"  data-ver="1.0.1"  data-eco="Linux">openssl 1.0.1</button>
+      <button class="tag" data-tech="express"  data-ver="4.17.1" data-eco="npm">express 4.17.1</button>
     </div>
     <div class="src-note">
       Sources: <a href="https://osv.dev" target="_blank" rel="noopener noreferrer">OSV.dev</a> ·
+      <a href="https://nvd.nist.gov" target="_blank" rel="noopener noreferrer">NVD</a> ·
+      <a href="https://github.com/advisories" target="_blank" rel="noopener noreferrer">GitHub Advisories</a> ·
       <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener noreferrer">CISA KEV</a> ·
-      <a href="https://endoflife.date" target="_blank" rel="noopener noreferrer">endoflife.date</a> ·
-      CVE links → <a href="https://nvd.nist.gov" target="_blank" rel="noopener noreferrer">NVD</a> /
-      <a href="https://github.com/advisories" target="_blank" rel="noopener noreferrer">GitHub Advisories</a>
+      <a href="https://endoflife.date" target="_blank" rel="noopener noreferrer">endoflife.date</a>
     </div>
   </div>
+
+  <!-- Did you mean -->
+  <div id="didYouMeanBox" class="dym-box" style="display:none"></div>
 
   <!-- Version warning -->
   <div id="versionWarning" class="version-warning" style="display:none"></div>
 
-  <!-- Non-trackable technology info box -->
+  <!-- Non-trackable -->
   <div id="nonTrackableBox" class="non-trackable-box" style="display:none"></div>
 
   <!-- Loading -->
@@ -96,7 +100,8 @@
     <div class="status-bar">
       <div class="status-left">
         <span class="target-label">Scan results for <strong id="resTarget"></strong></span>
-        <span id="scanMs" class="scan-ms" style="display:none"></span>
+        <span id="scanMs"   class="scan-ms"    style="display:none"></span>
+        <span id="cacheHit" class="cache-hit"  style="display:none">⚡ cached</span>
       </div>
       <span class="risk-badge" id="resBadge"></span>
     </div>
@@ -112,9 +117,7 @@
           <div class="risk-bar-track">
             <div class="risk-bar-fill" id="riskScoreBar" style="width:0%"></div>
           </div>
-          <div class="risk-bar-ticks">
-            <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
-          </div>
+          <div class="risk-bar-ticks"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
         </div>
       </div>
       <div id="riskBreakdown" class="risk-breakdown" style="display:none"></div>
@@ -122,18 +125,9 @@
 
     <!-- Metrics -->
     <div class="metrics-grid">
-      <div class="metric">
-        <div class="metric-val" id="metCves">—</div>
-        <div class="metric-lbl">Total CVEs</div>
-      </div>
-      <div class="metric">
-        <div class="metric-val" id="metCrit">—</div>
-        <div class="metric-lbl">Critical (≥9.0)</div>
-      </div>
-      <div class="metric">
-        <div class="metric-val" id="metKev">—</div>
-        <div class="metric-lbl">KEV (Exploited)</div>
-      </div>
+      <div class="metric"><div class="metric-val" id="metCves">—</div><div class="metric-lbl">Total CVEs</div></div>
+      <div class="metric"><div class="metric-val" id="metCrit">—</div><div class="metric-lbl">Critical (≥9.0)</div></div>
+      <div class="metric"><div class="metric-val" id="metKev">—</div><div class="metric-lbl">KEV (Exploited)</div></div>
     </div>
 
     <!-- EOL -->
@@ -150,6 +144,7 @@
       <div class="section-title">
         Vulnerabilities
         <span id="cveCount" class="cve-count" style="display:none"></span>
+        <span id="sourceBadges" class="source-badges"></span>
       </div>
       <div id="cveFilters" class="cve-filters" style="display:none">
         <input id="cveFilter" class="filter-input" placeholder="Filter by ID or keyword…" spellcheck="false">
