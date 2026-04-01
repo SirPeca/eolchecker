@@ -699,12 +699,18 @@ export async function onRequest(context) {
   structuredLog('scan_start', { ip, tech, version, ecosystem });
 
   // § KV CACHE — check before hitting APIs
+  // Cache key excludes lang — tactical is built fresh from cached vuln data
   const cacheKey = `${tech}:${version}:${ecosystem}`;
   const cached   = await getCached(env, cacheKey);
   if (cached) {
     const visitTotal = await incrementVisits(env, tech);
     structuredLog('cache_hit', { ip, tech, version, ms: Date.now()-t0 });
-    return jsonResp({ ...cached, cached:true, visitTotal }, 200, {
+    // Rebuild tactical with requested lang from cached vuln data
+    const cachedVulns   = cached.vulns?.list || [];
+    const cachedEol     = cached.eol || {};
+    const cachedRisk    = cached.risk || {};
+    const freshTactical = buildTacticalAnalysis(tech, version, cachedVulns, cachedEol, cachedRisk, lang);
+    return jsonResp({ ...cached, tactical: freshTactical, cached:true, visitTotal }, 200, {
       'X-Cache':'HIT', 'X-Scan-Ms':String(Date.now()-t0)
     });
   }
@@ -745,7 +751,7 @@ export async function onRequest(context) {
       summary,
       suggestion,  // did-you-mean (null if none)
       tactical:    buildTacticalAnalysis(tech, version, sorted, eolData, risk, lang),
-      meta:        { ms, version:'7.0.0', sources }
+      meta:        { ms, version:'8.0.0', sources }
     };
 
     // § KV CACHE — store result
