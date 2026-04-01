@@ -653,3 +653,89 @@ select option { background: #121828; color: var(--text); }
 
 /* ---- Banner info variant ---- */
 .banner-info { background: rgba(79,255,176,0.1); border-bottom: 1px solid rgba(79,255,176,0.25); color: var(--ok); }
+
+/* =========================================
+   v5 additions
+   ========================================= */
+
+/* ---- Non-trackable box ---- */
+.non-trackable-box {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  padding: 1rem 1.1rem; margin-bottom: 1.2rem;
+  background: rgba(99,188,255,0.07);
+  border: 1px solid rgba(99,188,255,0.22);
+  border-radius: 12px; font-size: 0.8rem; line-height: 1.7;
+  animation: fadeIn 0.25s ease;
+}
+.nt-icon { font-size: 1.1rem; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.nt-body { color: var(--muted); flex: 1; }
+.nt-body strong { color: var(--text); }
+.nt-hint { display: block; margin-top: 0.35rem; font-size: 0.72rem; color: rgba(107,122,153,0.7); line-height: 1.5; }
+
+/* ---- Scan ms badge ---- */
+.status-left { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.scan-ms {
+  font-size: 0.65rem; padding: 0.15rem 0.5rem;
+  border-radius: 4px; background: rgba(99,188,255,0.08);
+  border: 1px solid rgba(99,188,255,0.18); color: var(--muted);
+}
+
+/* ---- Version warning (carried from v4) ---- */
+.version-warning {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  padding: 0.85rem 1.1rem; margin-bottom: 1.2rem;
+  background: rgba(255,201,77,0.08); border: 1px solid rgba(255,201,77,0.28);
+  border-radius: 12px; font-size: 0.8rem; line-height: 1.6;
+  animation: fadeIn 0.25s ease;
+}
+.vw-icon { font-size: 1rem; color: var(--warn); flex-shrink: 0; margin-top: 1px; }
+.vw-body { color: var(--muted); flex: 1; }
+.vw-body strong { color: var(--warn); }
+.vw-label { color: var(--muted); margin-right: 4px; }
+.vw-btn {
+  display: inline-block; font-family: var(--mono); font-size: 0.72rem;
+  padding: 0.18rem 0.5rem; margin: 2px; border-radius: 5px;
+  background: rgba(255,201,77,0.1); border: 1px solid rgba(255,201,77,0.3);
+  color: var(--warn); cursor: pointer; transition: all 0.15s;
+}
+.vw-btn:hover { background: rgba(255,201,77,0.2); border-color: rgba(255,201,77,0.5); }
+
+/* ---- Export button ---- */
+.btn-export {
+  flex: 0 0 auto; padding: 0.68rem 1.1rem;
+  background: rgba(79,255,176,0.1); border: 1px solid rgba(79,255,176,0.3); color: var(--ok);
+}
+.btn-export:hover { background: rgba(79,255,176,0.18); border-color: rgba(79,255,176,0.5); }
+
+/* ---- Risk score card ---- */
+.risk-score-card { padding: 1.1rem 1.3rem 0.9rem; margin-bottom: 1rem; }
+.risk-score-row { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 0.75rem; }
+.risk-score-left { display: flex; align-items: baseline; gap: 0.3rem; flex-shrink: 0; }
+.risk-score-label { font-size: 0.67rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-right: 0.5rem; }
+.risk-score-num { font-family: var(--display); font-size: 2.2rem; font-weight: 800; color: var(--text); line-height: 1; }
+.risk-score-max { font-size: 0.85rem; color: var(--muted); }
+.risk-bar-wrap { flex: 1; }
+.risk-bar-track { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; margin-bottom: 0.3rem; }
+.risk-bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s cubic-bezier(0.4,0,0.2,1); }
+.bar-risk-critical { background: linear-gradient(90deg,#ff4545,#ff6b6b); }
+.bar-risk-high     { background: linear-gradient(90deg,#ff6142,#ff8c42); }
+.bar-risk-medium   { background: linear-gradient(90deg,#ffc94d,#ffd97a); }
+.bar-risk-low      { background: linear-gradient(90deg,#4fffb0,#7fffcc); }
+.risk-bar-ticks { display: flex; justify-content: space-between; font-size: 0.6rem; color: rgba(107,122,153,0.45); }
+
+/* ---- Risk breakdown ---- */
+.risk-breakdown { border-top: 1px solid var(--border); padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.factor-row { display: flex; align-items: center; gap: 0.6rem; font-size: 0.76rem; }
+.factor-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.factor-critical { background: #ff4545; }
+.factor-high     { background: #ff6142; }
+.factor-medium   { background: var(--warn); }
+.factor-low      { background: var(--muted); }
+.factor-label { flex: 1; color: var(--muted); }
+.factor-pts   { font-size: 0.68rem; color: var(--muted); font-weight: 700; }
+
+/* ---- CVE date ---- */
+.cve-date { font-size: 0.65rem; color: rgba(107,122,153,0.5); margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+
+/* ---- Banner info ---- */
+.banner-info { background: rgba(79,255,176,0.1); border-bottom: 1px solid rgba(79,255,176,0.25); color: var(--ok); }
