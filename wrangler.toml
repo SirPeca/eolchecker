@@ -6,6 +6,6 @@ pages_build_output_dir = "web"
 # 1. Create a KV namespace in your Cloudflare dashboard
 # 2. Uncomment and replace YOUR_KV_ID with the actual ID
 #
-# [[kv_namespaces]]
-# binding = "RATE_LIMIT"
-# id = "YOUR_KV_ID"
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "b7cd6b2234ea4b5dba983601da03caf6"
