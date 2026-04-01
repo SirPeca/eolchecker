@@ -1,32 +1,34 @@
 /* =========================================
-   EOL & CVE Checker — app.js  v6
+   EOL & CVE Checker — app.js  v7
    ========================================= */
 
 const $ = id => document.getElementById(id);
-let _lastData = null;
-let scanHistory = loadHistory();
+
+let _lastData    = null;
+let _tacLang     = 'en';        // current language: 'en' | 'es'
+let _tacTab      = 'red';       // current tab: 'red' | 'blue'
+let scanHistory  = loadHistory();
 
 renderHistory();
 bindEvents();
-loadVisitCounter();   // fetch & display visit count on page load
+loadVisitCounter();
 
 // ---- Visit counter ----
 
 async function loadVisitCounter() {
   try {
-    const res  = await fetch('/visits');
-    const data = await res.json();
+    const data = await (await fetch('/visits')).json();
     if (data.total != null) {
       const el = $('visitCounter');
       el.textContent = `${formatNumber(data.total)} scans`;
       el.style.display = '';
     }
-  } catch { /* silent fail */ }
+  } catch {}
 }
 
 function formatNumber(n) {
-  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
-  if (n >= 1000)    return (n/1000).toFixed(1)    + 'K';
+  if (n >= 1000000) return (n/1000000).toFixed(1)+'M';
+  if (n >= 1000)    return (n/1000).toFixed(1)+'K';
   return String(n);
 }
 
@@ -36,7 +38,6 @@ function bindEvents() {
   $('btn').addEventListener('click', doScan);
   $('btnClear').addEventListener('click', clearForm);
   $('btnExport').addEventListener('click', exportReport);
-
   document.querySelectorAll('.tag').forEach(t => {
     t.addEventListener('click', () => {
       $('tech').value      = t.dataset.tech;
@@ -44,12 +45,8 @@ function bindEvents() {
       $('ecosystem').value = t.dataset.eco;
     });
   });
-
-  ['tech', 'version'].forEach(id => {
-    $(id).addEventListener('keydown', e => { if (e.key === 'Enter') doScan(); });
-  });
-
-  $('cveFilter').addEventListener('input', filterCVEs);
+  ['tech','version'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key==='Enter') doScan(); }));
+  $('cveFilter').addEventListener('input',  filterCVEs);
   $('sevFilter').addEventListener('change', filterCVEs);
 }
 
@@ -59,37 +56,32 @@ async function doScan() {
   const tech      = $('tech').value.trim();
   const version   = $('version').value.trim();
   const ecosystem = $('ecosystem').value;
-
   if (!tech || !version) { flashError($('tech')); return; }
 
   $('results').classList.remove('visible');
-  $('versionWarning').style.display    = 'none';
-  $('nonTrackableBox').style.display   = 'none';
-  $('didYouMeanBox').style.display     = 'none';
+  ['versionWarning','nonTrackableBox','didYouMeanBox'].forEach(id => $(id).style.display = 'none');
   $('loading').classList.add('visible');
   $('btn').disabled = true;
 
   const msgs = [
     'Validating version against registry...',
-    ecosystem === 'auto' ? 'Auto-detecting ecosystem (npm, PyPI, Maven, Go…)' : `Querying OSV [${ecosystem}]…`,
+    ecosystem === 'auto' ? 'Auto-detecting ecosystem…' : `Querying OSV [${ecosystem}]…`,
     'Checking fallback sources (NVD, GitHub Advisories)...',
     'Checking CISA Known Exploited Vulnerabilities...',
     'Verifying end-of-life status...',
     'Computing risk score...',
-    'Building report...'
+    'Building tactical analysis...'
   ];
   let mi = 0;
   const ticker = setInterval(() => { $('loadingText').textContent = msgs[mi++ % msgs.length]; }, 850);
-
-  const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), 25000);
+  const ctrl   = new AbortController();
+  const tmout  = setTimeout(() => ctrl.abort(), 25000);
 
   try {
-    const url = `/check?tech=${encodeURIComponent(tech)}&version=${encodeURIComponent(version)}&ecosystem=${encodeURIComponent(ecosystem)}`;
-    const res  = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    const url  = `/check?tech=${encodeURIComponent(tech)}&version=${encodeURIComponent(version)}&ecosystem=${encodeURIComponent(ecosystem)}&lang=${_tacLang}`;
+    const res  = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(tmout);
     const text = await res.text();
-
     clearInterval(ticker);
     $('loading').classList.remove('visible');
     $('btn').disabled = false;
@@ -100,11 +92,9 @@ async function doScan() {
 
     if (!data.success) { showBanner(data.error || 'Unknown backend error.', 'error'); return; }
 
-    // Update visit counter live after scan
     if (data.visitTotal != null) {
-      const el = $('visitCounter');
-      el.textContent = `${formatNumber(data.visitTotal)} scans`;
-      el.style.display = '';
+      $('visitCounter').textContent = `${formatNumber(data.visitTotal)} scans`;
+      $('visitCounter').style.display = '';
     }
 
     if (data.nonTrackable) { renderNonTrackable(data); return; }
@@ -116,97 +106,108 @@ async function doScan() {
     addToHistory(data);
 
   } catch (err) {
-    clearTimeout(timeoutId);
+    clearTimeout(tmout);
     clearInterval(ticker);
     $('loading').classList.remove('visible');
     $('btn').disabled = false;
-    showBanner(err.name === 'AbortError' ? 'Request timed out after 25s. Try again.' : 'Network error: ' + err.message, 'error');
+    showBanner(err.name === 'AbortError' ? 'Request timed out. Try again.' : 'Network error: '+err.message, 'error');
   }
 }
 
-// ---- Did you mean? ----
+// ---- Tactical panel controls ----
 
-function renderDidYouMean(data) {
-  const box = $('didYouMeanBox');
-  if (!data.suggestion) { box.style.display = 'none'; return; }
-
-  const s = data.suggestion;
-  box.innerHTML = `
-    <span class="dym-icon">💡</span>
-    <div class="dym-body">
-      Did you mean <strong>${escHtml(s.name)}</strong>?
-      <button class="vw-btn" onclick="useSuggestion('${escAttr(s.name)}','${escAttr(s.ecosystem||'')}')">
-        Use ${escHtml(s.name)}${s.ecosystem ? ' ('+escHtml(s.ecosystem)+')' : ''}
-      </button>
-    </div>`;
-  box.style.display = 'flex';
-}
-
-window.useSuggestion = function(name, eco) {
-  $('tech').value = name;
-  if (eco) $('ecosystem').value = eco;
-  $('didYouMeanBox').style.display = 'none';
-  doScan();
+window.switchTacTab = function(tab) {
+  _tacTab = tab;
+  $('tabRed').className  = 'tac-tab' + (tab==='red'  ? ' active-red'  : '');
+  $('tabBlue').className = 'tac-tab' + (tab==='blue' ? ' active-blue' : '');
+  renderTactical();
 };
 
-// ---- Non-trackable ----
-
-function renderNonTrackable(data) {
-  const box = $('nonTrackableBox');
-  box.innerHTML = `
-    <div class="nt-icon">ℹ</div>
-    <div class="nt-body">
-      <strong>${escHtml(data.target.tech)}</strong> is not trackable via CVE databases.
-      <br>${escHtml(data.note)}
-      <br><span class="nt-hint">This is expected for SaaS services, CDN scripts, and cloud platforms.
-      Check the provider's security bulletins directly.</span>
-    </div>`;
-  box.style.display = 'flex';
-}
-
-// ---- Version warning ----
-
-function renderVersionWarning(data) {
-  const vi = data.versionInfo;
-  if (!vi || vi.exists === true) { $('versionWarning').style.display = 'none'; return; }
-
-  const box = $('versionWarning');
-  let html  = `<span class="vw-icon">⚠</span>
-    <div class="vw-body">
-      <strong>Version not found in ${escHtml(data.target.ecosystem)} registry.</strong>
-      Results may be based on nearest available version.`;
-  if (vi.closest) html += `<br>Closest: <button class="vw-btn" onclick="useVersion('${escAttr(vi.closest)}')">${escHtml(vi.closest)}</button>`;
-  if (vi.recentVersions?.length) {
-    html += `<br><span class="vw-label">Recent:</span> ` +
-      vi.recentVersions.map(v => `<button class="vw-btn" onclick="useVersion('${escAttr(v)}')">${escHtml(v)}</button>`).join(' ');
+window.switchLang = function(lang) {
+  _tacLang = lang;
+  $('langEN').className = 'lang-btn' + (lang==='en' ? ' active' : '');
+  $('langES').className = 'lang-btn' + (lang==='es' ? ' active' : '');
+  // Re-fetch with new lang if we have data
+  if (_lastData) {
+    fetchTacticalForLang(lang);
   }
-  html += '</div>';
-  box.innerHTML = html;
-  box.style.display = 'flex';
+};
+
+async function fetchTacticalForLang(lang) {
+  if (!_lastData) return;
+  const { tech, version, ecosystem } = _lastData.target;
+  try {
+    const url  = `/check?tech=${encodeURIComponent(tech)}&version=${encodeURIComponent(version)}&ecosystem=${encodeURIComponent(ecosystem)}&lang=${lang}`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.tactical) {
+      _lastData.tactical = data.tactical;
+      renderTactical();
+    }
+  } catch {}
 }
 
-window.useVersion = function(v) {
-  $('version').value = v;
-  $('versionWarning').style.display = 'none';
-  doScan();
+function renderTactical() {
+  if (!_lastData?.tactical) {
+    $('tacticalPanel').style.display = 'none';
+    return;
+  }
+  const content = _tacTab === 'red' ? _lastData.tactical.red : _lastData.tactical.blue;
+  $('tacContent').className = `tac-content tac-panel-${_tacTab}`;
+  $('tacContent').innerHTML = markdownToHtml(content);
+  $('tacticalPanel').style.display = '';
+}
+
+window.copyTactical = function() {
+  if (!_lastData?.tactical) return;
+  const content = _tacTab === 'red' ? _lastData.tactical.red : _lastData.tactical.blue;
+  navigator.clipboard.writeText(content).then(() => {
+    const btn = $('tacCopyBtn');
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '⎘ Copy'; btn.classList.remove('copied'); }, 2000);
+  }).catch(() => {
+    // Fallback for non-secure context
+    const ta = document.createElement('textarea');
+    ta.value = content;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showBanner('Copied to clipboard ✓', 'info');
+  });
 };
+
+// Simple markdown → HTML renderer for tactical content
+function markdownToHtml(md) {
+  return md
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')   // escape first
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>(\n|$))+/g, m => `<ul>${m}</ul>`)
+    .replace(/^\|(.+)\|$/gm, row => {
+      const cells = row.split('|').filter(Boolean).map(c => c.trim());
+      return '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>';
+    })
+    .replace(/(<tr>.*<\/tr>(\n|$))+/g, m => `<table>${m}</table>`)
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/^(?!<[hupbt])(.+)$/gm, m => m.startsWith('<') ? m : `<p>${m}</p>`)
+    // Fix table headers (first row)
+    .replace(/<tr><td>([^<]+)<\/td><td>([^<]+)<\/td><\/tr>/, '<tr><th>$1</th><th>$2</th></tr>');
+}
 
 // ---- Render Results ----
 
 function renderResults(data) {
-  // Target + cache badge
   let targetHtml = `${escHtml(data.target.tech)} ${escHtml(data.target.version)}`;
   if (data.target.ecosystem === 'auto') targetHtml += ' <span class="badge-auto">auto</span>';
   $('resTarget').innerHTML = targetHtml;
 
-  if (data.cached) {
-    $('cacheHit').style.display = '';
-  } else {
-    $('cacheHit').style.display = 'none';
-  }
-
-  if (data.meta?.ms) { $('scanMs').textContent = `${data.meta.ms}ms`; $('scanMs').style.display = ''; }
-  else { $('scanMs').style.display = 'none'; }
+  $('cacheHit').style.display = data.cached ? '' : 'none';
+  if (data.meta?.ms) { $('scanMs').textContent = `${data.meta.ms}ms`; $('scanMs').style.display=''; }
 
   const badge = $('resBadge');
   badge.textContent = data.risk.level;
@@ -214,38 +215,40 @@ function renderResults(data) {
 
   const kevCount  = data.vulns.list.filter(v => v.kev).length;
   const critCount = data.vulns.list.filter(v => numSev(v.severity) >= 9.0).length;
+  setMetric('metCves', data.vulns.total, data.vulns.total>0 ? 'col-bad':'col-ok');
+  setMetric('metCrit', critCount,         critCount>0        ? 'col-bad':'col-ok');
+  setMetric('metKev',  kevCount,          kevCount>0         ? 'col-bad':'col-ok');
 
-  setMetric('metCves', data.vulns.total, data.vulns.total > 0 ? 'col-bad' : 'col-ok');
-  setMetric('metCrit', critCount,         critCount > 0        ? 'col-bad' : 'col-ok');
-  setMetric('metKev',  kevCount,          kevCount > 0         ? 'col-bad' : 'col-ok');
-
-  // Risk score bar
+  // § BAR FIX — set class + reset to 0, make results visible, THEN animate
   const score = data.risk.score || 0;
-  $('riskScore').textContent    = score;
-  $('riskScoreBar').style.width = score + '%';
-  $('riskScoreBar').className   = 'risk-bar-fill ' + riskClass(data.risk.level).replace('risk-','bar-');
+  $('riskScore').textContent  = score;
+  const bar = $('riskScoreBar');
+  bar.className   = 'risk-bar-fill ' + riskClass(data.risk.level).replace('risk-','bar-');
+  bar.style.width = '0%';   // always start from 0
+
   renderRiskBreakdown(data.risk.factors || []);
 
-  // § EOL — globalLatest vs branchLatest
-  const eol = data.eol;
+  // EOL
+  const eol   = data.eol;
   const eolEl = $('eolStatus');
-  eolEl.textContent = eol.status === 'EOL' ? '✕ End of Life' : eol.status === 'supported' ? '✓ Supported' : '? Unknown';
-  eolEl.className   = 'eol-status ' + (eol.status === 'EOL' ? 'eol-eol' : eol.status === 'supported' ? 'eol-supported' : 'eol-unknown');
+  eolEl.textContent = eol.status==='EOL' ? '✕ End of Life' : eol.status==='supported' ? '✓ Supported' : '? Unknown';
+  eolEl.className   = 'eol-status '+(eol.status==='EOL'?'eol-eol':eol.status==='supported'?'eol-supported':'eol-unknown');
 
   let eolMeta = '';
   if (eol.globalLatest) {
     eolMeta += `Latest (global): <span class="hl">${escHtml(eol.globalLatest)}</span>`;
-    if (eol.branchLatest && eol.branchLatest !== eol.globalLatest) {
+    if (eol.branchLatest && eol.branchLatest !== eol.globalLatest)
       eolMeta += `&nbsp;&nbsp;·&nbsp;&nbsp;Latest (this branch): <span class="hl-muted">${escHtml(eol.branchLatest)}</span>`;
-    }
   }
   if (eol.eolDate) eolMeta += `&nbsp;&nbsp;·&nbsp;&nbsp;EOL date: <span class="hl-warn">${escHtml(eol.eolDate)}</span>`;
   if (eol.lts)     eolMeta += `&nbsp;&nbsp;·&nbsp;&nbsp;<span class="badge-lts">LTS</span>`;
   $('eolLatest').innerHTML = eolMeta;
 
-  // Sources badge row
+  // Source badges
   const sources = data.vulns?.sources || data.meta?.sources || ['OSV'];
-  $('sourceBadges').innerHTML = sources.map(s => `<span class="source-badge source-${s.toLowerCase()}">${escHtml(s)}</span>`).join('');
+  $('sourceBadges').innerHTML = sources.map(s =>
+    `<span class="source-badge source-${s.toLowerCase()}">${escHtml(s)}</span>`
+  ).join('');
 
   // CVE count
   const cveCount = $('cveCount');
@@ -254,26 +257,38 @@ function renderResults(data) {
       ? `${data.vulns.list.length} shown / ${data.vulns.total} total`
       : `${data.vulns.total} found`;
     cveCount.style.display = '';
-  } else { cveCount.style.display = 'none'; }
+  } else cveCount.style.display = 'none';
 
   $('cveFilters').style.display = data.vulns.list.length > 3 ? 'flex' : 'none';
   $('cveFilter').value = '';
   $('sevFilter').value = 'all';
 
-  renderCVEList((data.vulns.list || []).slice(0, 100));
+  renderCVEList((data.vulns.list||[]).slice(0,100));
   $('btnExport').style.display = '';
+
+  // Make results visible FIRST
   $('results').classList.add('visible');
+
+  // § BAR ANIMATION — double rAF ensures the browser has painted the element
+  // before we change width, so the CSS transition actually fires
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      bar.style.width = score + '%';
+    });
+  });
+
+  // Render tactical panel
+  renderTactical();
+
   setTimeout(() => $('results').scrollIntoView({ behavior:'smooth', block:'nearest' }), 50);
 }
 
-function setMetric(id, val, cls) {
-  const el = $(id); el.textContent = val; el.className = 'metric-val ' + cls;
-}
+function setMetric(id, val, cls) { const el=$(id); el.textContent=val; el.className='metric-val '+cls; }
 
 function renderRiskBreakdown(factors) {
   const box = $('riskBreakdown');
-  if (!factors.length) { box.style.display = 'none'; return; }
-  box.style.display = '';
+  if (!factors.length) { box.style.display='none'; return; }
+  box.style.display='';
   box.innerHTML = factors.map(f => `
     <div class="factor-row">
       <span class="factor-dot factor-${f.level}"></span>
@@ -282,136 +297,135 @@ function renderRiskBreakdown(factors) {
     </div>`).join('');
 }
 
-// ---- CVE List ----
+// ---- Auxiliary UI ----
+
+function renderNonTrackable(data) {
+  $('nonTrackableBox').innerHTML = `
+    <div class="nt-icon">ℹ</div>
+    <div class="nt-body">
+      <strong>${escHtml(data.target.tech)}</strong> is not trackable via CVE databases.
+      <br>${escHtml(data.note)}
+      <br><span class="nt-hint">This is expected for SaaS services, CDN scripts, and cloud platforms.</span>
+    </div>`;
+  $('nonTrackableBox').style.display = 'flex';
+}
+
+function renderDidYouMean(data) {
+  const box = $('didYouMeanBox');
+  if (!data.suggestion) { box.style.display='none'; return; }
+  const s = data.suggestion;
+  box.innerHTML = `
+    <span class="dym-icon">💡</span>
+    <div class="dym-body">
+      Did you mean <strong>${escHtml(s.name)}</strong>?
+      <button class="vw-btn" onclick="useSuggestion('${escAttr(s.name)}','${escAttr(s.ecosystem||'')}')">
+        Use ${escHtml(s.name)}${s.ecosystem?' ('+escHtml(s.ecosystem)+')':''}
+      </button>
+    </div>`;
+  box.style.display = 'flex';
+}
+
+function renderVersionWarning(data) {
+  const vi  = data.versionInfo;
+  const box = $('versionWarning');
+  if (!vi || vi.exists===true) { box.style.display='none'; return; }
+  let html = `<span class="vw-icon">⚠</span>
+    <div class="vw-body">
+      <strong>Version not found in ${escHtml(data.target.ecosystem)} registry.</strong>`;
+  if (vi.closest) html += `<br>Closest: <button class="vw-btn" onclick="useVersion('${escAttr(vi.closest)}')">${escHtml(vi.closest)}</button>`;
+  if (vi.recentVersions?.length) html += `<br><span class="vw-label">Recent:</span> `+
+    vi.recentVersions.map(v=>`<button class="vw-btn" onclick="useVersion('${escAttr(v)}')">${escHtml(v)}</button>`).join(' ');
+  html += '</div>';
+  box.innerHTML = html;
+  box.style.display = 'flex';
+}
+
+window.useVersion    = v  => { $('version').value=v; $('versionWarning').style.display='none'; doScan(); };
+window.useSuggestion = (n,e) => { $('tech').value=n; if(e) $('ecosystem').value=e; $('didYouMeanBox').style.display='none'; doScan(); };
+
+// ---- CVE list ----
 
 function renderCVEList(list) {
   const el = $('cveList');
-  if (!list.length) { el.innerHTML = '<div class="no-cves">✓ No known vulnerabilities found for this version</div>'; return; }
-
-  el.innerHTML = list.map((v, i) => {
-    const sc        = sevClass(v.severity);
-    const lbl       = sevLabel(v.severity);
-    const idDisplay = v.displayId || v.id;
-    const altId     = (v.displayId && v.displayId !== v.id) ? `<span class="cve-alias">${escHtml(v.id)}</span>` : '';
-    const summary   = v.summary ? `<span class="cve-summary">${escHtml(v.summary.slice(0,110))}${v.summary.length>110?'…':''}</span>` : '';
-    const link      = v.link ? `<a class="cve-link" href="${escAttr(v.link)}" target="_blank" rel="noopener noreferrer" title="View advisory">↗</a>` : '';
-    const kev       = v.kev  ? '<span class="kev-badge">⚑ KEV</span>' : '';
-    const date      = v.published ? `<span class="cve-date">${v.published.slice(0,10)}</span>` : '';
-    const srcBadge  = v.source && v.source !== 'OSV' ? `<span class="cve-src-badge">${escHtml(v.source)}</span>` : '';
-
+  if (!list.length) { el.innerHTML='<div class="no-cves">✓ No known vulnerabilities found for this version</div>'; return; }
+  el.innerHTML = list.map((v,i) => {
+    const sc  = sevClass(v.severity), lbl = sevLabel(v.severity), id = v.displayId||v.id;
+    const alt = (v.displayId&&v.displayId!==v.id) ? `<span class="cve-alias">${escHtml(v.id)}</span>` : '';
+    const sum = v.summary ? `<span class="cve-summary">${escHtml(v.summary.slice(0,110))}${v.summary.length>110?'…':''}</span>` : '';
+    const lnk = v.link    ? `<a class="cve-link" href="${escAttr(v.link)}" target="_blank" rel="noopener noreferrer">↗</a>` : '';
+    const kev = v.kev     ? '<span class="kev-badge">⚑ KEV</span>' : '';
+    const dt  = v.published ? `<span class="cve-date">${v.published.slice(0,10)}</span>` : '';
+    const src = v.source&&v.source!=='OSV' ? `<span class="cve-src-badge">${escHtml(v.source)}</span>` : '';
     return `
       <div class="cve-item" style="animation-delay:${Math.min(i,20)*0.025}s"
-           data-sev="${sc}" data-id="${escAttr(idDisplay)}" data-summary="${escAttr(v.summary||'')}">
+           data-sev="${sc}" data-id="${escAttr(id)}" data-summary="${escAttr(v.summary||'')}">
         <div class="cve-main">
           <div class="cve-id-group">
-            <span class="cve-id">${escHtml(idDisplay)}</span>
-            ${altId}${kev}
-            <span class="sev-badge ${sc}">${lbl}</span>
-            ${srcBadge}${date}
-          </div>
-          ${summary}
-        </div>
-        ${link}
+            <span class="cve-id">${escHtml(id)}</span>${alt}${kev}
+            <span class="sev-badge ${sc}">${lbl}</span>${src}${dt}
+          </div>${sum}
+        </div>${lnk}
       </div>`;
   }).join('');
 }
 
-// ---- Filter ----
-
 function filterCVEs() {
   if (!_lastData) return;
-  const text   = $('cveFilter').value.toLowerCase();
-  const sevSel = $('sevFilter').value;
-  let list = (_lastData.vulns.list || []).slice(0, 100);
-  if (sevSel !== 'all') list = list.filter(v => sevClass(v.severity) === 'sev-' + sevSel);
-  if (text) list = list.filter(v =>
-    (v.displayId||v.id).toLowerCase().includes(text) ||
-    (v.summary||'').toLowerCase().includes(text) ||
-    (v.allIds||[]).join(' ').toLowerCase().includes(text)
-  );
+  const text=($('cveFilter').value||'').toLowerCase(), sevSel=$('sevFilter').value;
+  let list = (_lastData.vulns.list||[]).slice(0,100);
+  if (sevSel!=='all') list=list.filter(v=>sevClass(v.severity)==='sev-'+sevSel);
+  if (text) list=list.filter(v=>(v.displayId||v.id).toLowerCase().includes(text)||(v.summary||'').toLowerCase().includes(text)||(v.allIds||[]).join(' ').toLowerCase().includes(text));
   renderCVEList(list);
-  $('cveCount').textContent = list.length < _lastData.vulns.total
-    ? `${list.length} shown / ${_lastData.vulns.total} total`
-    : `${_lastData.vulns.total} found`;
+  $('cveCount').textContent = list.length<_lastData.vulns.total ? `${list.length} shown / ${_lastData.vulns.total} total` : `${_lastData.vulns.total} found`;
 }
 
 // ---- Export ----
 
 function exportReport() {
   if (!_lastData) return;
-  const s = _lastData.summary, r = _lastData.risk;
-  const vulns = (_lastData.vulns.list || []).slice(0,100);
-  const sources = (_lastData.vulns?.sources || ['OSV']).join(', ');
-
-  const lines = [
-    '='.repeat(60), '  SECURITY ASSESSMENT REPORT', '  EOL & CVE Checker  v6', '='.repeat(60), '',
-    `Date:          ${s.date}`,
-    `Target:        ${s.target}`,
-    `Data Sources:  ${sources}`,
-    '',
-    '-'.repeat(60), 'EXECUTIVE SUMMARY', '-'.repeat(60), '',
-    `Risk Level:    ${s.riskLevel}`,
-    `Risk Score:    ${s.riskScore}/100`,
-    `Max CVSS:      ${s.maxCvss || 'N/A'}`,
-    '',
-    `Total CVEs:    ${s.totalVulns}`,
-    `  Critical:    ${s.criticalVulns}`,
-    `  High:        ${s.highVulns}`,
-    `  KEV (active):${s.kevVulns}`,
-    '',
+  const s=_lastData.summary, r=_lastData.risk, vulns=(_lastData.vulns.list||[]).slice(0,100);
+  const sources=(_lastData.vulns?.sources||['OSV']).join(', ');
+  const tac=_lastData.tactical;
+  const lines=[
+    '='.repeat(60),'  SECURITY ASSESSMENT REPORT','  EOL & CVE Checker  v7','='.repeat(60),'',
+    `Date:          ${s.date}`,`Target:        ${s.target}`,`Data Sources:  ${sources}`,'',
+    '-'.repeat(60),'EXECUTIVE SUMMARY','-'.repeat(60),'',
+    `Risk Level:    ${s.riskLevel}`,`Risk Score:    ${s.riskScore}/100`,`Max CVSS:      ${s.maxCvss||'N/A'}`,'',
+    `Total CVEs:    ${s.totalVulns}`,`  Critical:    ${s.criticalVulns}`,`  High:        ${s.highVulns}`,`  KEV:         ${s.kevVulns}`,'',
     `EOL Status:    ${s.eolStatus?.toUpperCase()}`,
-    s.eolDate        ? `EOL Date:      ${s.eolDate}` : '',
-    s.latestVersion  ? `Latest Ver:    ${s.latestVersion}` : '',
-    '',
-    '-'.repeat(60), 'RISK FACTORS', '-'.repeat(60), '',
-    ...(r.factors||[]).map(f=>`  [${f.level.toUpperCase().padEnd(8)}] ${f.label} (+${f.points} pts)`),
-    '',
-    '-'.repeat(60), 'RECOMMENDATION', '-'.repeat(60), '',
-    ...wordWrap(s.recommendation, 58).map(l=>`  ${l}`),
-    '',
-    '-'.repeat(60), `VULNERABILITIES (${vulns.length} shown)`, '-'.repeat(60), '',
-    ...vulns.map((v,i) => [
-      `${String(i+1).padStart(3)}. ${v.displayId||v.id}  [${v.source||'OSV'}]`,
-      `     Severity:  ${v.severity}${v.kev?' ⚑ ACTIVELY EXPLOITED (KEV)':''}`,
-      v.published ? `     Published: ${v.published.slice(0,10)}` : '',
-      v.summary   ? `     Summary:   ${v.summary.slice(0,100)}` : '',
-      `     Reference: ${v.link||'N/A'}`, ''
-    ].filter(Boolean)).flat(),
-    '='.repeat(60),
-    'Generated by EOL & CVE Checker v6 — https://theeolchecker.pages.dev',
-    '='.repeat(60),
+    s.eolDate?`EOL Date:      ${s.eolDate}`:'',s.latestVersion?`Latest Ver:    ${s.latestVersion}`:'','',
+    '-'.repeat(60),'RISK FACTORS','-'.repeat(60),'',
+    ...(r.factors||[]).map(f=>`  [${f.level.toUpperCase().padEnd(8)}] ${f.label} (+${f.points} pts)`),'',
+    '-'.repeat(60),'RECOMMENDATION','-'.repeat(60),'',
+    ...wordWrap(s.recommendation,58).map(l=>`  ${l}`),'',
+    ...(tac?['-'.repeat(60),'RED TEAM ANALYSIS','-'.repeat(60),'',tac.red.replace(/<[^>]+>/g,''),'','-'.repeat(60),'BLUE TEAM ANALYSIS','-'.repeat(60),'',tac.blue.replace(/<[^>]+>/g,''),'']:[]),
+    '-'.repeat(60),`VULNERABILITIES (${vulns.length} shown)`,'-'.repeat(60),'',
+    ...vulns.map((v,i)=>[`${String(i+1).padStart(3)}. ${v.displayId||v.id}  [${v.source||'OSV'}]`,`     Severity:  ${v.severity}${v.kev?' ⚑ ACTIVELY EXPLOITED (KEV)':''}`,v.published?`     Published: ${v.published.slice(0,10)}`:'',v.summary?`     Summary:   ${v.summary.slice(0,100)}`:'',`     Reference: ${v.link||'N/A'}`,''].filter(Boolean)).flat(),
+    '='.repeat(60),'Generated by EOL & CVE Checker v7 — https://theeolchecker.pages.dev','='.repeat(60),
   ].filter(l=>l!==undefined).join('\n');
 
-  const a = Object.assign(document.createElement('a'), {
-    href: URL.createObjectURL(new Blob([lines], {type:'text/plain;charset=utf-8'})),
-    download: `security-report-${_lastData.target.tech}-${_lastData.target.version}-${s.date}.txt`
+  const a=Object.assign(document.createElement('a'),{
+    href:URL.createObjectURL(new Blob([lines],{type:'text/plain;charset=utf-8'})),
+    download:`security-report-${_lastData.target.tech}-${_lastData.target.version}-${s.date}.txt`
   });
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(a.href);
-  showBanner('Report downloaded ✓', 'info');
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);
+  showBanner('Report downloaded ✓','info');
 }
 
-function wordWrap(text, width) {
-  const words=(text||'').split(' '), lines=[]; let cur='';
-  for (const w of words) {
-    if ((cur+' '+w).trim().length>width){lines.push(cur);cur=w;}
-    else cur=(cur+' '+w).trim();
-  }
-  if(cur)lines.push(cur); return lines;
-}
+function wordWrap(t,w){const words=(t||'').split(' '),lines=[];let c='';for(const word of words){if((c+' '+word).trim().length>w){lines.push(c);c=word;}else c=(c+' '+word).trim();}if(c)lines.push(c);return lines;}
 
 // ---- History ----
 
 function addToHistory(data) {
-  const e={ tech:data.target.tech, version:data.target.version, eco:$('ecosystem').value, risk:data.risk.level, score:data.risk.score, total:data.vulns.total, ts:Date.now() };
+  const e={tech:data.target.tech,version:data.target.version,eco:$('ecosystem').value,risk:data.risk.level,score:data.risk.score,total:data.vulns.total,ts:Date.now()};
   scanHistory=scanHistory.filter(h=>!(h.tech===e.tech&&h.version===e.version));
   scanHistory.unshift(e);
-  if(scanHistory.length>10) scanHistory=scanHistory.slice(0,10);
-  saveHistory(scanHistory); renderHistory();
+  if(scanHistory.length>10)scanHistory=scanHistory.slice(0,10);
+  saveHistory(scanHistory);renderHistory();
 }
 
 function renderHistory() {
-  if (!scanHistory.length){$('historySection').style.display='none';return;}
+  if(!scanHistory.length){$('historySection').style.display='none';return;}
   $('historySection').style.display='block';
   $('historyList').innerHTML=scanHistory.map(h=>`
     <div class="history-item" tabindex="0"
@@ -429,20 +443,19 @@ function renderHistory() {
   });
 }
 
-function loadHistory()  { try{return JSON.parse(localStorage.getItem('eolchecker_history')||'[]');}catch{return[];} }
-function saveHistory(h) { try{localStorage.setItem('eolchecker_history',JSON.stringify(h));}catch{} }
+function loadHistory(){try{return JSON.parse(localStorage.getItem('eolchecker_history')||'[]');}catch{return[];}}
+function saveHistory(h){try{localStorage.setItem('eolchecker_history',JSON.stringify(h));}catch{}}
 
 // ---- Misc ----
 
 function clearForm() {
   $('tech').value='';$('version').value='';
   $('results').classList.remove('visible');
-  $('versionWarning').style.display='none';
-  $('nonTrackableBox').style.display='none';
-  $('didYouMeanBox').style.display='none';
+  ['versionWarning','nonTrackableBox','didYouMeanBox'].forEach(id=>$(id).style.display='none');
   $('btnExport').style.display='none';
   $('scanMs').style.display='none';
   $('cacheHit').style.display='none';
+  $('tacticalPanel').style.display='none';
   _lastData=null;
 }
 
