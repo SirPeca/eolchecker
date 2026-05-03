@@ -56,9 +56,10 @@
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" id="btn">⚡ Scan</button>
+      <button class="btn btn-primary"   id="btn">⚡ Scan</button>
       <button class="btn btn-secondary" id="btnClear">✕ Clear</button>
-      <button class="btn btn-export" id="btnExport" style="display:none">↓ Report</button>
+      <button class="btn btn-export"    id="btnExport"   style="display:none">↓ Report</button>
+      <button class="btn btn-feedback"  id="btnFeedback" style="display:none">💬 Feedback</button>
     </div>
     <div class="tag-row">
       <span class="field-label" style="align-self:center;margin:0;margin-right:4px;">Quick:</span>
@@ -71,6 +72,7 @@
     </div>
     <div class="src-note">
       Sources: <a href="https://osv.dev" target="_blank" rel="noopener noreferrer">OSV.dev</a> ·
+      <a href="https://security.snyk.io" target="_blank" rel="noopener noreferrer">Snyk</a> ·
       <a href="https://nvd.nist.gov" target="_blank" rel="noopener noreferrer">NVD</a> ·
       <a href="https://github.com/advisories" target="_blank" rel="noopener noreferrer">GitHub Advisories</a> ·
       <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" rel="noopener noreferrer">CISA KEV</a> ·
@@ -78,9 +80,58 @@
     </div>
   </div>
 
-  <div id="didYouMeanBox"   class="dym-box"            style="display:none"></div>
-  <div id="versionWarning"  class="version-warning"    style="display:none"></div>
-  <div id="nonTrackableBox" class="non-trackable-box"  style="display:none"></div>
+  <!-- § FEEDBACK PANEL v9 — all handlers in app.js, no inline events -->
+  <div class="feedback-panel card" id="feedbackPanel" style="display:none">
+    <div class="feedback-header">
+      <span class="feedback-title">💬 Share your experience</span>
+      <button class="feedback-close" id="feedbackClose">✕</button>
+    </div>
+    <form id="feedbackForm" class="feedback-form">
+      <!-- § HONEYPOT: visually hidden, tab-index -1. Bots fill it, humans never see it -->
+      <div class="feedback-honeypot" aria-hidden="true">
+        <input type="text" id="fbWebsite" name="website" tabindex="-1" autocomplete="off">
+      </div>
+      <div class="feedback-rating-row">
+        <span class="feedback-label">How did it go?</span>
+        <div class="rating-options">
+          <label class="rating-opt">
+            <input type="radio" name="fbRating" value="positive">
+            <span class="rating-btn rating-pos">✓ Worked</span>
+          </label>
+          <label class="rating-opt">
+            <input type="radio" name="fbRating" value="negative">
+            <span class="rating-btn rating-neg">✕ Didn't work</span>
+          </label>
+          <label class="rating-opt">
+            <input type="radio" name="fbRating" value="neutral">
+            <span class="rating-btn rating-neu">~ Partial</span>
+          </label>
+        </div>
+      </div>
+      <input type="hidden" id="fbTech">
+      <input type="hidden" id="fbVersion">
+      <div class="feedback-field">
+        <label class="feedback-label" for="fbMessage">
+          What happened?
+          <span class="feedback-hint">(10–500 chars)</span>
+        </label>
+        <textarea id="fbMessage" name="message" rows="3"
+          placeholder="e.g. Searched for core-js 3.20.0 — results were accurate and the Red Team analysis saved me time writing the report."
+          maxlength="500" spellcheck="false"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary feedback-submit" id="fbSubmit">
+        Send feedback
+      </button>
+    </form>
+    <div id="feedbackSuccess" class="feedback-success" style="display:none">
+      <span class="feedback-success-icon">✓</span>
+      <span>Thank you! Your feedback helps improve the tool.</span>
+    </div>
+  </div>
+
+  <div id="didYouMeanBox"   class="dym-box"           style="display:none"></div>
+  <div id="versionWarning"  class="version-warning"   style="display:none"></div>
+  <div id="nonTrackableBox" class="non-trackable-box" style="display:none"></div>
 
   <div class="card loading-overlay" id="loading">
     <div class="spinner"></div>
@@ -134,7 +185,7 @@
         <span id="sourceBadges" class="source-badges"></span>
       </div>
       <div id="cveFilters" class="cve-filters" style="display:none">
-        <input id="cveFilter" class="filter-input" placeholder="Filter by ID or keyword…" spellcheck="false">
+        <input id="cveFilter" class="filter-input" placeholder="Filter by ID, keyword or vector type…" spellcheck="false">
         <select id="sevFilter" class="filter-select">
           <option value="all">All severities</option>
           <option value="critical">Critical</option>
@@ -147,16 +198,13 @@
       <div class="cve-list" id="cveList"></div>
     </div>
 
-    <!-- TACTICAL PANEL — NO inline onclick, all bound in app.js -->
     <div class="tactical-panel" id="tacticalPanel" style="display:none">
       <div class="tactical-tabs">
-        <!-- data-tab attribute used by JS event delegation -->
         <button class="tac-tab active-red"  id="tabRed"  data-tab="red">🔴 Red Team</button>
         <button class="tac-tab"             id="tabBlue" data-tab="blue">🔵 Blue Team</button>
       </div>
       <div class="tac-lang-row">
         <span class="tac-lang-label">Language</span>
-        <!-- data-lang attribute used by JS event delegation -->
         <button class="lang-btn active" id="langEN" data-lang="en">EN</button>
         <button class="lang-btn"        id="langES" data-lang="es">ES</button>
       </div>
@@ -166,7 +214,7 @@
       </div>
     </div>
 
-  </div><!-- /results -->
+  </div>
 
   <div class="history-section" id="historySection" style="display:none">
     <div class="history-title">⏱ Recent Scans</div>
