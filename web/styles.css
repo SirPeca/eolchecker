@@ -764,3 +764,305 @@ select option { background: #121828; color: var(--text); }
 /* Red/Blue color accents inside content */
 .tac-panel-red  .tac-content h2 { color: #ff5252; }
 .tac-panel-blue .tac-content h2 { color: var(--accent); }
+
+/* =========================================
+   v9 additions
+   ========================================= */
+
+/* ── § VECTOR TYPE BADGE ─────────────────── */
+.cve-vector {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.15rem 0.48rem;
+  border-radius: 5px;
+  background: rgba(167,139,250,0.12);
+  border: 1px solid rgba(167,139,250,0.28);
+  color: #a78bfa;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-family: var(--mono);
+}
+
+/* ── § SNYK source badge ─────────────────── */
+.source-snyk {
+  background: rgba(100,210,120,0.1);
+  border: 1px solid rgba(100,210,120,0.25);
+  color: #4ade80;
+}
+.cve-src-snyk {
+  background: rgba(100,210,120,0.1);
+  border: 1px solid rgba(100,210,120,0.22);
+  color: #4ade80;
+}
+
+/* ── § FEEDBACK BUTTON ───────────────────── */
+.btn-feedback {
+  flex: 0 0 auto;
+  padding: 0.68rem 1.0rem;
+  background: rgba(167,139,250,0.1);
+  border: 1px solid rgba(167,139,250,0.3);
+  color: #a78bfa;
+}
+.btn-feedback:hover {
+  background: rgba(167,139,250,0.18);
+  border-color: rgba(167,139,250,0.5);
+}
+
+/* ── § FEEDBACK PANEL ────────────────────── */
+.feedback-panel {
+  margin-bottom: 1.2rem;
+  padding: 1.25rem 1.4rem;
+  animation: fadeIn 0.2s ease;
+}
+
+.feedback-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.feedback-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.feedback-close {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: var(--mono);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.feedback-close:hover { color: var(--text); background: var(--surface2); }
+
+.feedback-form { display: flex; flex-direction: column; gap: 0.85rem; }
+
+/* § HONEYPOT — completely hidden from real users */
+.feedback-honeypot {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.feedback-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.feedback-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.68rem;
+  color: rgba(107,122,153,0.55);
+  font-weight: 400;
+}
+
+/* Rating buttons */
+.feedback-rating-row { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.rating-options {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rating-opt { cursor: pointer; }
+.rating-opt input[type="radio"] { display: none; }
+
+.rating-btn {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.3rem 0.75rem;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.rating-opt input:checked + .rating-pos {
+  border-color: rgba(79,255,176,0.45);
+  color: var(--ok);
+  background: rgba(79,255,176,0.09);
+}
+.rating-opt input:checked + .rating-neg {
+  border-color: rgba(255,82,82,0.45);
+  color: var(--bad);
+  background: rgba(255,82,82,0.09);
+}
+.rating-opt input:checked + .rating-neu {
+  border-color: rgba(99,188,255,0.45);
+  color: var(--accent);
+  background: rgba(99,188,255,0.09);
+}
+.rating-btn:hover { border-color: var(--border2); color: var(--text); }
+
+/* Textarea */
+.feedback-field { display: flex; flex-direction: column; }
+
+.feedback-form textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  padding: 0.65rem 0.85rem;
+  outline: none;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.18s, box-shadow 0.18s;
+  line-height: 1.5;
+}
+.feedback-form textarea:focus {
+  border-color: rgba(99,188,255,0.45);
+  box-shadow: 0 0 0 3px rgba(99,188,255,0.08);
+}
+.feedback-form textarea::placeholder { color: rgba(107,122,153,0.45); }
+
+.feedback-submit {
+  align-self: flex-start;
+  flex: 0 0 auto;
+}
+.feedback-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Success state */
+.feedback-success {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  background: rgba(79,255,176,0.08);
+  border: 1px solid rgba(79,255,176,0.22);
+  border-radius: 10px;
+  font-size: 0.84rem;
+  color: var(--ok);
+  animation: fadeIn 0.25s ease;
+}
+.feedback-success-icon {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* ── § BAR FIX — clean transition definition ─ */
+/* transition is removed inline by JS before reset,
+   then re-applied via this class after rAF fires */
+.risk-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  width: 0%;
+  /* NO transition here — JS controls it via style attr
+     to guarantee it fires only after display:block paint */
+}
+.risk-bar-fill.animate {
+  transition: width 0.85s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Existing styles carried from v8 (deduplicated) ── */
+.status-left { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.scan-ms { font-size: 0.65rem; padding: 0.15rem 0.5rem; border-radius: 4px; background: rgba(99,188,255,0.08); border: 1px solid rgba(99,188,255,0.18); color: var(--muted); }
+.cache-hit { font-size: 0.65rem; padding: 0.15rem 0.5rem; border-radius: 4px; background: rgba(79,255,176,0.1); border: 1px solid rgba(79,255,176,0.25); color: var(--ok); }
+.badge-auto { font-size: 0.6rem; padding: 0.12rem 0.4rem; border-radius: 4px; background: rgba(99,188,255,0.12); border: 1px solid rgba(99,188,255,0.25); color: var(--accent); vertical-align: middle; margin-left: 4px; }
+.hl-muted { color: rgba(99,188,255,0.6); font-weight: 700; }
+.banner-info { background: rgba(79,255,176,0.1); border-bottom: 1px solid rgba(79,255,176,0.25); color: var(--ok); }
+.source-badges { margin-left: auto; display: flex; gap: 0.35rem; }
+.source-badge { font-size: 0.58rem; font-weight: 700; padding: 0.12rem 0.45rem; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.source-osv    { background: rgba(99,188,255,0.1);  border: 1px solid rgba(99,188,255,0.25);  color: var(--accent); }
+.source-nvd    { background: rgba(255,209,102,0.1); border: 1px solid rgba(255,209,102,0.25); color: var(--warn); }
+.source-github { background: rgba(79,255,176,0.09); border: 1px solid rgba(79,255,176,0.22);  color: var(--ok); }
+.cve-src-badge { font-size: 0.58rem; font-weight: 700; padding: 0.1rem 0.38rem; border-radius: 4px; text-transform: uppercase; background: rgba(255,209,102,0.1); border: 1px solid rgba(255,209,102,0.22); color: rgba(255,209,102,0.8); letter-spacing: 0.3px; flex-shrink: 0; }
+.cve-date { font-size: 0.65rem; color: rgba(107,122,153,0.5); margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+.dym-box { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1.1rem; margin-bottom: 1.2rem; background: rgba(141,244,201,0.07); border: 1px solid rgba(141,244,201,0.22); border-radius: 12px; font-size: 0.8rem; line-height: 1.7; animation: fadeIn 0.25s ease; }
+.dym-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+.dym-body { color: var(--muted); flex: 1; }
+.dym-body strong { color: var(--text); }
+.non-trackable-box { display: flex; align-items: flex-start; gap: 0.75rem; padding: 1rem 1.1rem; margin-bottom: 1.2rem; background: rgba(99,188,255,0.07); border: 1px solid rgba(99,188,255,0.22); border-radius: 12px; font-size: 0.8rem; line-height: 1.7; animation: fadeIn 0.25s ease; }
+.nt-icon { font-size: 1.1rem; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+.nt-body { color: var(--muted); flex: 1; }
+.nt-body strong { color: var(--text); }
+.nt-hint { display: block; margin-top: 0.35rem; font-size: 0.72rem; color: rgba(107,122,153,0.7); line-height: 1.5; }
+.version-warning { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1.1rem; margin-bottom: 1.2rem; background: rgba(255,201,77,0.08); border: 1px solid rgba(255,201,77,0.28); border-radius: 12px; font-size: 0.8rem; line-height: 1.6; animation: fadeIn 0.25s ease; }
+.vw-icon { font-size: 1rem; color: var(--warn); flex-shrink: 0; margin-top: 1px; }
+.vw-body { color: var(--muted); flex: 1; }
+.vw-body strong { color: var(--warn); }
+.vw-label { color: var(--muted); margin-right: 4px; }
+.vw-btn { display: inline-block; font-family: var(--mono); font-size: 0.72rem; padding: 0.18rem 0.5rem; margin: 2px; border-radius: 5px; background: rgba(255,201,77,0.1); border: 1px solid rgba(255,201,77,0.3); color: var(--warn); cursor: pointer; transition: all 0.15s; }
+.vw-btn:hover { background: rgba(255,201,77,0.2); border-color: rgba(255,201,77,0.5); }
+.btn-export { flex: 0 0 auto; padding: 0.68rem 1.1rem; background: rgba(79,255,176,0.1); border: 1px solid rgba(79,255,176,0.3); color: var(--ok); }
+.btn-export:hover { background: rgba(79,255,176,0.18); border-color: rgba(79,255,176,0.5); }
+.risk-score-card { padding: 1.1rem 1.3rem 0.9rem; margin-bottom: 1rem; }
+.risk-score-row { display: flex; align-items: center; gap: 1.5rem; margin-bottom: 0.75rem; }
+.risk-score-left { display: flex; align-items: baseline; gap: 0.3rem; flex-shrink: 0; }
+.risk-score-label { font-size: 0.67rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-right: 0.5rem; }
+.risk-score-num { font-family: var(--display); font-size: 2.2rem; font-weight: 800; color: var(--text); line-height: 1; }
+.risk-score-max { font-size: 0.85rem; color: var(--muted); }
+.risk-bar-wrap { flex: 1; }
+.risk-bar-track { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; margin-bottom: 0.3rem; }
+.bar-risk-critical { background: linear-gradient(90deg,#ff4545,#ff6b6b); }
+.bar-risk-high     { background: linear-gradient(90deg,#ff6142,#ff8c42); }
+.bar-risk-medium   { background: linear-gradient(90deg,#ffc94d,#ffd97a); }
+.bar-risk-low      { background: linear-gradient(90deg,#4fffb0,#7fffcc); }
+.risk-bar-ticks { display: flex; justify-content: space-between; font-size: 0.6rem; color: rgba(107,122,153,0.45); }
+.risk-breakdown { border-top: 1px solid var(--border); padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
+.factor-row { display: flex; align-items: center; gap: 0.6rem; font-size: 0.76rem; }
+.factor-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.factor-critical { background: #ff4545; }
+.factor-high     { background: #ff6142; }
+.factor-medium   { background: var(--warn); }
+.factor-low      { background: var(--muted); }
+.factor-label { flex: 1; color: var(--muted); }
+.factor-pts   { font-size: 0.68rem; color: var(--muted); font-weight: 700; }
+.tactical-panel { margin-bottom: 1.2rem; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+.tactical-tabs { display: flex; background: var(--surface2); border-bottom: 1px solid var(--border); gap: 0; }
+.tac-tab { flex: 1; padding: 0.65rem 1rem; font-family: var(--mono); font-size: 0.76rem; font-weight: 700; cursor: pointer; border: none; background: transparent; color: var(--muted); letter-spacing: 0.4px; transition: all 0.15s; border-bottom: 2px solid transparent; text-align: center; }
+.tac-tab:hover { color: var(--text); }
+.tac-tab.active-red  { color: #ff5252; border-bottom-color: #ff5252; }
+.tac-tab.active-blue { color: var(--accent); border-bottom-color: var(--accent); }
+.tac-lang-row { display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; padding: 0.5rem 1rem; background: var(--surface); border-bottom: 1px solid var(--border); }
+.tac-lang-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+.lang-btn { font-family: var(--mono); font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 5px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+.lang-btn.active { border-color: rgba(99,188,255,0.45); color: var(--accent); background: rgba(99,188,255,0.08); }
+.lang-btn:hover:not(.active) { border-color: var(--border2); color: var(--text); }
+.tac-content { padding: 1.1rem 1.25rem; background: var(--surface); font-size: 0.78rem; line-height: 1.75; color: var(--muted); min-height: 140px; max-height: 420px; overflow-y: auto; }
+.tac-content::-webkit-scrollbar { width: 4px; }
+.tac-content::-webkit-scrollbar-track { background: transparent; }
+.tac-content::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.tac-content h2 { font-family: var(--display); font-size: 1rem; font-weight: 800; color: var(--text); margin: 0 0 0.5rem; }
+.tac-content h3 { font-size: 0.8rem; font-weight: 700; color: var(--text); margin: 0.9rem 0 0.3rem; padding-top: 0.6rem; border-top: 1px solid var(--border); }
+.tac-content h3:first-of-type { border-top: none; margin-top: 0.3rem; }
+.tac-content strong { color: var(--text); }
+.tac-content ul { margin: 0.25rem 0 0.5rem 1.1rem; padding: 0; }
+.tac-content li { margin-bottom: 0.2rem; }
+.tac-content p  { margin: 0.25rem 0; }
+.tac-content table { width: 100%; border-collapse: collapse; font-size: 0.74rem; margin-top: 0.5rem; }
+.tac-content th, .tac-content td { padding: 0.3rem 0.6rem; border: 1px solid var(--border); text-align: left; }
+.tac-content th { background: var(--surface2); color: var(--text); font-weight: 700; }
+.tac-panel-red  .tac-content h2 { color: #ff5252; }
+.tac-panel-blue .tac-content h2 { color: var(--accent); }
+.tac-footer { display: flex; justify-content: flex-end; padding: 0.5rem 1rem; background: var(--surface); border-top: 1px solid var(--border); }
+.tac-copy-btn { font-family: var(--mono); font-size: 0.7rem; padding: 0.28rem 0.75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; transition: all 0.15s; }
+.tac-copy-btn:hover { border-color: var(--border2); color: var(--text); }
+.tac-copy-btn.copied { border-color: rgba(79,255,176,0.4); color: var(--ok); }
