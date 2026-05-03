@@ -3,9 +3,7 @@ compatibility_date = "2026-02-02"
 pages_build_output_dir = "web"
 
 # ---- KV Namespace ----
-# Used for: rate limiting, result cache (1h TTL), visit counter
-# Your existing KV namespace is already configured here.
-
+# Used for: rate limiting, result cache (1h TTL), visit counter, feedback storage
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
 id = "b7cd6b2234ea4b5dba983601da03caf6"
