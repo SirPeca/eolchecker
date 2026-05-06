@@ -3,9 +3,46 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- ══════════════════════════════════════════
+     SEO & SOCIAL SHARING — v10
+     LinkedIn, Twitter/X, Facebook, WhatsApp
+     ══════════════════════════════════════════ -->
+<title>EOL &amp; CVE Checker — Free Vulnerability Scanner for Pentesters</title>
+<meta name="description" content="Free security tool for pentesters. Check End-of-Life status and CVEs for any technology in seconds. OSV · Snyk · NVD · CISA KEV · Red Team & Blue Team analysis · EN/ES reports.">
+<meta name="keywords" content="CVE checker, EOL checker, vulnerability scanner, pentesting tool, security assessment, CISA KEV, OSV, NVD, red team, blue team">
+<meta name="author" content="EOL &amp; CVE Checker">
+<link rel="canonical" href="https://theeolchecker.pages.dev/">
+
+<!-- Open Graph (LinkedIn, Facebook, WhatsApp) -->
+<meta property="og:type"        content="website">
+<meta property="og:url"         content="https://theeolchecker.pages.dev/">
+<meta property="og:title"       content="EOL &amp; CVE Checker — Free Vulnerability Scanner for Pentesters">
+<meta property="og:description" content="Check End-of-Life status and CVEs for any technology in seconds. Multi-source: OSV · Snyk · NVD · CISA KEV. Red Team &amp; Blue Team tactical analysis. Risk score 0–100. No login. No API key. Free.">
+<meta property="og:image"       content="https://theeolchecker.pages.dev/img/og-image.svg">
+<meta property="og:image:width"  content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt"   content="EOL &amp; CVE Checker — vulnerability scanner for pentesters">
+<meta property="og:site_name"   content="EOL &amp; CVE Checker">
+<meta property="og:locale"      content="en_US">
+
+<!-- Twitter / X Card -->
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="EOL &amp; CVE Checker — Free Vulnerability Scanner for Pentesters">
+<meta name="twitter:description" content="Check End-of-Life status and CVEs for any technology in seconds. OSV · Snyk · NVD · CISA KEV. Red &amp; Blue Team analysis. Risk score 0–100. Free.">
+<meta name="twitter:image"       content="https://theeolchecker.pages.dev/img/og-image.svg">
+<meta name="twitter:image:alt"   content="EOL &amp; CVE Checker">
+
+<!-- ══════════════════════════════════════════
+     SECURITY HEADERS via meta (belt + suspenders;
+     real headers are in _headers file)
+     ══════════════════════════════════════════ -->
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none';">
-<title>EOL &amp; CVE Checker</title>
+  content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data: https://theeolchecker.pages.dev; frame-ancestors 'none';">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+<meta name="robots" content="index, follow">
+
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,6 +64,7 @@
     <span id="visitCounter" class="visit-counter" style="display:none"></span>
   </header>
 
+  <!-- Scan form -->
   <div class="card" id="scanCard">
     <div class="scan-grid">
       <div>
@@ -80,14 +118,14 @@
     </div>
   </div>
 
-  <!-- § FEEDBACK PANEL v9 — all handlers in app.js, no inline events -->
+  <!-- § FEEDBACK PANEL v10 — client-side char filtering added -->
   <div class="feedback-panel card" id="feedbackPanel" style="display:none">
     <div class="feedback-header">
       <span class="feedback-title">💬 Share your experience</span>
       <button class="feedback-close" id="feedbackClose">✕</button>
     </div>
     <form id="feedbackForm" class="feedback-form">
-      <!-- § HONEYPOT: visually hidden, tab-index -1. Bots fill it, humans never see it -->
+      <!-- § HONEYPOT — hidden from humans, bots fill this -->
       <div class="feedback-honeypot" aria-hidden="true">
         <input type="text" id="fbWebsite" name="website" tabindex="-1" autocomplete="off">
       </div>
@@ -113,11 +151,15 @@
       <div class="feedback-field">
         <label class="feedback-label" for="fbMessage">
           What happened?
-          <span class="feedback-hint">(10–500 chars)</span>
+          <span class="feedback-hint">(letters, numbers and basic punctuation only · 10–500 chars)</span>
         </label>
+        <!-- § SECURITY: pattern attr blocks specials at browser level.
+             JS also filters on every keystroke (see app.js bindFeedbackSecurity) -->
         <textarea id="fbMessage" name="message" rows="3"
           placeholder="e.g. Searched for core-js 3.20.0 — results were accurate and the Red Team analysis saved me time writing the report."
-          maxlength="500" spellcheck="false"></textarea>
+          maxlength="500" spellcheck="false"
+          inputmode="text"></textarea>
+        <span class="feedback-char-counter" id="fbCharCount">0 / 500</span>
       </div>
       <button type="submit" class="btn btn-primary feedback-submit" id="fbSubmit">
         Send feedback
@@ -148,6 +190,7 @@
       <span class="risk-badge" id="resBadge"></span>
     </div>
 
+    <!-- § BAR FIX v10: no JS timing — CSS transition-delay handles it -->
     <div class="risk-score-card card">
       <div class="risk-score-row">
         <div class="risk-score-left">
@@ -213,7 +256,6 @@
         <button class="tac-copy-btn" id="tacCopyBtn">⎘ Copy</button>
       </div>
     </div>
-
   </div>
 
   <div class="history-section" id="historySection" style="display:none">
