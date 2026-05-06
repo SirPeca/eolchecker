@@ -576,14 +576,8 @@ select option { background: #121828; color: var(--text); }
 .risk-bar-track   { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; margin-bottom: 0.3rem; }
 
 /* § FIX: bar starts at 0%, JS drives the width after element is visible */
-.risk-bar-fill {
-  height: 100%; border-radius: 4px; width: 0%;
-  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-}
+
 .bar-risk-critical { background: linear-gradient(90deg, #ff4545, #ff6b6b); }
-.bar-risk-high     { background: linear-gradient(90deg, #ff6142, #ff8c42); }
-.bar-risk-medium   { background: linear-gradient(90deg, #ffc94d, #ffd97a); }
-.bar-risk-low      { background: linear-gradient(90deg, #4fffb0, #7fffcc); }
 
 .risk-bar-ticks { display: flex; justify-content: space-between; font-size: 0.6rem; color: rgba(107,122,153,0.45); }
 
@@ -970,16 +964,8 @@ select option { background: #121828; color: var(--text); }
 /* ── § BAR FIX — clean transition definition ─ */
 /* transition is removed inline by JS before reset,
    then re-applied via this class after rAF fires */
-.risk-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-  width: 0%;
-  /* NO transition here — JS controls it via style attr
-     to guarantee it fires only after display:block paint */
-}
-.risk-bar-fill.animate {
-  transition: width 0.85s cubic-bezier(0.4, 0, 0.2, 1);
-}
+
+
 
 /* ── Existing styles carried from v8 (deduplicated) ── */
 .status-left { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
@@ -1021,10 +1007,21 @@ select option { background: #121828; color: var(--text); }
 .risk-score-max { font-size: 0.85rem; color: var(--muted); }
 .risk-bar-wrap { flex: 1; }
 .risk-bar-track { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; margin-bottom: 0.3rem; }
-.bar-risk-critical { background: linear-gradient(90deg,#ff4545,#ff6b6b); }
-.bar-risk-high     { background: linear-gradient(90deg,#ff6142,#ff8c42); }
-.bar-risk-medium   { background: linear-gradient(90deg,#ffc94d,#ffd97a); }
-.bar-risk-low      { background: linear-gradient(90deg,#4fffb0,#7fffcc); }
+
+/* § BAR ANIMATION — v10 DEFINITIVE FIX
+   transition-delay: 250ms guarantees the browser has fully painted
+   display:block + the fadeIn animation frame BEFORE the width
+   transition starts. Zero JS timing tricks needed. */
+.risk-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  width: 0%;
+  transition: width 0.9s cubic-bezier(0.4, 0, 0.2, 1) 250ms;
+}
+.bar-risk-critical { background: linear-gradient(90deg, #ff4545, #ff6b6b); }
+.bar-risk-high     { background: linear-gradient(90deg, #ff6142, #ff8c42); }
+.bar-risk-medium   { background: linear-gradient(90deg, #ffc94d, #ffd97a); }
+.bar-risk-low      { background: linear-gradient(90deg, #4fffb0, #7fffcc); }
 .risk-bar-ticks { display: flex; justify-content: space-between; font-size: 0.6rem; color: rgba(107,122,153,0.45); }
 .risk-breakdown { border-top: 1px solid var(--border); padding-top: 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
 .factor-row { display: flex; align-items: center; gap: 0.6rem; font-size: 0.76rem; }
@@ -1066,3 +1063,29 @@ select option { background: #121828; color: var(--text); }
 .tac-copy-btn { font-family: var(--mono); font-size: 0.7rem; padding: 0.28rem 0.75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; transition: all 0.15s; }
 .tac-copy-btn:hover { border-color: var(--border2); color: var(--text); }
 .tac-copy-btn.copied { border-color: rgba(79,255,176,0.4); color: var(--ok); }
+
+/* =========================================
+   v10 additions
+   ========================================= */
+
+/* Char counter below textarea */
+.feedback-char-counter {
+  font-size: 0.67rem;
+  color: var(--muted);
+  text-align: right;
+  margin-top: 0.25rem;
+  transition: color 0.2s;
+}
+.feedback-char-counter.warn  { color: var(--warn); }
+.feedback-char-counter.limit { color: var(--bad);  }
+
+/* Feedback hint updated copy */
+.feedback-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.67rem;
+  color: rgba(107,122,153,0.55);
+  font-weight: 400;
+  display: block;
+  margin-top: 0.15rem;
+}
