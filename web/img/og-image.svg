@@ -1,1 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A0E1A"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#4ADE80"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <line x1="0" y1="126" x2="1200" y2="126" stroke="#1A2233" stroke-width="1"/>
+  <line x1="0" y1="252" x2="1200" y2="252" stroke="#1A2233" stroke-width="1"/>
+  <line x1="0" y1="378" x2="1200" y2="378" stroke="#1A2233" stroke-width="1"/>
+  <line x1="0" y1="504" x2="1200" y2="504" stroke="#1A2233" stroke-width="1"/>
+  <circle cx="180" cy="180" r="320" fill="#0E4A6E" opacity="0.22"/>
+  <rect x="80" y="72" width="88" height="108" rx="14" fill="#22D3EE" opacity="0.13"/>
+  <rect x="80" y="72" width="88" height="108" rx="14" fill="none" stroke="#22D3EE" stroke-width="2" opacity="0.4"/>
+  <text x="124" y="143" font-size="50" text-anchor="middle" font-family="Segoe UI Emoji,Apple Color Emoji,sans-serif">🛡</text>
+  <text x="196" y="168" font-family="Arial Black,Arial" font-weight="900" font-size="70" fill="#F1F5F9">EOL &amp; </text>
+  <text x="545" y="168" font-family="Arial Black,Arial" font-weight="900" font-size="70" fill="#22D3EE">CVE</text>
+  <text x="684" y="168" font-family="Arial Black,Arial" font-weight="900" font-size="70" fill="#F1F5F9"> Checker</text>
+  <rect x="80" y="186" width="500" height="5" rx="3" fill="url(#accent)"/>
+  <text x="80" y="248" font-family="Arial,sans-serif" font-size="26" fill="#6B7280" letter-spacing="3">END-OF-LIFE · VULNERABILITY · RISK ASSESSMENT</text>
+  <rect x="80"  y="295" width="200" height="46" rx="8" fill="#0E7490" opacity="0.22"/>
+  <rect x="80"  y="295" width="200" height="46" rx="8" fill="none" stroke="#22D3EE" stroke-width="1" opacity="0.5"/>
+  <text x="180" y="324" font-family="Arial,sans-serif" font-size="19" fill="#22D3EE" text-anchor="middle" font-weight="700">OSV.dev</text>
+  <rect x="295" y="295" width="200" height="46" rx="8" fill="#7C3AED" opacity="0.18"/>
+  <rect x="295" y="295" width="200" height="46" rx="8" fill="none" stroke="#A78BFA" stroke-width="1" opacity="0.5"/>
+  <text x="395" y="324" font-family="Arial,sans-serif" font-size="19" fill="#A78BFA" text-anchor="middle" font-weight="700">Snyk</text>
+  <rect x="510" y="295" width="200" height="46" rx="8" fill="#B45309" opacity="0.18"/>
+  <rect x="510" y="295" width="200" height="46" rx="8" fill="none" stroke="#FBBF24" stroke-width="1" opacity="0.5"/>
+  <text x="610" y="324" font-family="Arial,sans-serif" font-size="19" fill="#FBBF24" text-anchor="middle" font-weight="700">NVD</text>
+  <rect x="725" y="295" width="200" height="46" rx="8" fill="#B91C1C" opacity="0.18"/>
+  <rect x="725" y="295" width="200" height="46" rx="8" fill="none" stroke="#EF4444" stroke-width="1" opacity="0.5"/>
+  <text x="825" y="324" font-family="Arial,sans-serif" font-size="19" fill="#EF4444" text-anchor="middle" font-weight="700">CISA KEV</text>
+  <rect x="940" y="295" width="200" height="46" rx="8" fill="#166534" opacity="0.18"/>
+  <rect x="940" y="295" width="200" height="46" rx="8" fill="none" stroke="#4ADE80" stroke-width="1" opacity="0.5"/>
+  <text x="1040" y="324" font-family="Arial,sans-serif" font-size="19" fill="#4ADE80" text-anchor="middle" font-weight="700">EOL.date</text>
+  <rect x="80"  y="375" width="255" height="58" rx="10" fill="#EF4444" opacity="0.11"/>
+  <rect x="80"  y="375" width="255" height="58" rx="10" fill="none" stroke="#EF4444" stroke-width="1.5" opacity="0.4"/>
+  <text x="207" y="411" font-family="Arial,sans-serif" font-size="21" fill="#EF4444" text-anchor="middle" font-weight="700">🔴 Red Team Analysis</text>
+  <rect x="350" y="375" width="255" height="58" rx="10" fill="#22D3EE" opacity="0.09"/>
+  <rect x="350" y="375" width="255" height="58" rx="10" fill="none" stroke="#22D3EE" stroke-width="1.5" opacity="0.4"/>
+  <text x="477" y="411" font-family="Arial,sans-serif" font-size="21" fill="#22D3EE" text-anchor="middle" font-weight="700">🔵 Blue Team Analysis</text>
+  <rect x="620" y="375" width="255" height="58" rx="10" fill="#4ADE80" opacity="0.09"/>
+  <rect x="620" y="375" width="255" height="58" rx="10" fill="none" stroke="#4ADE80" stroke-width="1.5" opacity="0.4"/>
+  <text x="747" y="411" font-family="Arial,sans-serif" font-size="21" fill="#4ADE80" text-anchor="middle" font-weight="700">Risk Score 0–100</text>
+  <rect x="890" y="375" width="255" height="58" rx="10" fill="#FBBF24" opacity="0.09"/>
+  <rect x="890" y="375" width="255" height="58" rx="10" fill="none" stroke="#FBBF24" stroke-width="1.5" opacity="0.4"/>
+  <text x="1017" y="411" font-family="Arial,sans-serif" font-size="21" fill="#FBBF24" text-anchor="middle" font-weight="700">EN / ES Reports</text>
+  <rect x="80" y="465" width="700" height="52" rx="10" fill="#111827"/>
+  <rect x="80" y="465" width="700" height="52" rx="10" fill="none" stroke="#1A2233" stroke-width="1"/>
+  <text x="100" y="498" font-family="Consolas,monospace" font-size="19" fill="#22D3EE">$ scan openssl 1.0.1  →  CRITICAL 87/100  ·  3 CVEs  ·  1 KEV</text>
+  <rect x="0" y="558" width="1200" height="72" fill="#0D1220"/>
+  <rect x="0" y="558" width="1200" height="3" fill="url(#accent)"/>
+  <text x="80" y="601" font-family="Arial,sans-serif" font-size="22" fill="#6B7280">Free · No login · No API key · For every pentester</text>
+  <text x="1120" y="601" font-family="Consolas,monospace" font-size="22" fill="#22D3EE" text-anchor="end" font-weight="700">theeolchecker.pages.dev</text>
+</svg>
 
