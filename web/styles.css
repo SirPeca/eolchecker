@@ -289,20 +289,19 @@ select option { background: #121828; color: var(--text); }
 }
 
 /* ══════════════════════════════════════════
-   § RISK BAR — v11 DEFINITIVE FIX
-   The bar lives INSIDE .risk-bar-track which
-   has overflow:hidden. It starts at width:0%
-   and the CSS transition-delay:250ms fires
-   AFTER the fadeIn animation has had time to
-   commit display:block to the layout.
-   JS only sets bar.style.width = score+'%'
-   inside a requestAnimationFrame — nothing else.
+   § RISK BAR — v12 DEFINITIVE FIX
+   width:0% is set as inline style in HTML.
+   JS sets className (color), makes results
+   visible, then uses double-rAF to set the
+   target width after display:block is painted.
+   First rAF: layout committed.
+   Second rAF: browser has painted → transition fires.
    ══════════════════════════════════════════ */
 .risk-bar-fill {
   height: 100%;
   border-radius: 4px;
   width: 0%;
-  transition: width 0.9s cubic-bezier(0.4, 0, 0.2, 1) 250ms;
+  transition: width 0.85s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .bar-risk-critical { background: linear-gradient(90deg, #ff4545, #ff6b6b); }
 .bar-risk-high     { background: linear-gradient(90deg, #ff6142, #ff8c42); }
