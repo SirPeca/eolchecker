@@ -305,13 +305,7 @@ select option { background: #121828; color: var(--text); }
   width: 0%;
 }
 
-/* JS injects a <style id="bar-kf"> tag with exact @keyframes per scan
-   e.g.: @keyframes barFill { to { width: 87% } }
-   Then adds class .bar-animated to trigger it.
-   This is display:none safe — animations fire on class add, not property change. */
-.bar-animated {
-  animation: barFill 0.9s cubic-bezier(0.4, 0, 0.2, 1) 0.15s both;
-}
+
 
 .bar-risk-critical { background: linear-gradient(90deg, #ff4545, #ff6b6b); }
 .bar-risk-high     { background: linear-gradient(90deg, #ff6142, #ff8c42); }
