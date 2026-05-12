@@ -289,20 +289,30 @@ select option { background: #121828; color: var(--text); }
 }
 
 /* ══════════════════════════════════════════
-   § RISK BAR — v12 DEFINITIVE FIX
-   width:0% is set as inline style in HTML.
-   JS sets className (color), makes results
-   visible, then uses double-rAF to set the
-   target width after display:block is painted.
-   First rAF: layout committed.
-   Second rAF: browser has painted → transition fires.
+   § RISK BAR — v13 FINAL FIX
+   Uses CSS @keyframes animation instead of
+   transition. Animations fire on class-add
+   and are NOT affected by display:none timing.
+   JS sets --bar-target CSS custom property to
+   the score value, then adds .bar-animate class.
+   The @keyframes reads the custom property and
+   animates from 0% to that value.
+   Works 100% regardless of parent display state.
    ══════════════════════════════════════════ */
 .risk-bar-fill {
   height: 100%;
   border-radius: 4px;
   width: 0%;
-  transition: width 0.85s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* JS injects a <style id="bar-kf"> tag with exact @keyframes per scan
+   e.g.: @keyframes barFill { to { width: 87% } }
+   Then adds class .bar-animated to trigger it.
+   This is display:none safe — animations fire on class add, not property change. */
+.bar-animated {
+  animation: barFill 0.9s cubic-bezier(0.4, 0, 0.2, 1) 0.15s both;
+}
+
 .bar-risk-critical { background: linear-gradient(90deg, #ff4545, #ff6b6b); }
 .bar-risk-high     { background: linear-gradient(90deg, #ff6142, #ff8c42); }
 .bar-risk-medium   { background: linear-gradient(90deg, #ffc94d, #ffd97a); }
