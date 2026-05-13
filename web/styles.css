@@ -228,8 +228,19 @@ select option { background: #121828; color: var(--text); }
 .loading-text { font-size: 0.76rem; color: var(--muted); letter-spacing: 0.3px; }
 
 /* ── Results ── */
-.results { display: none; animation: fadeIn 0.3s ease; }
-.results.visible { display: block; }
+/* § v16 BAR FIX: replaced display:none + animation with opacity transition.
+   CSS animations on the parent block child transitions/animations.
+   Opacity transition is purely visual — doesn't affect layout at all.
+   The bar's CSS transition now fires reliably. */
+.results {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+.results.visible {
+  opacity: 1;
+  visibility: visible;
+}
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -294,15 +305,14 @@ select option { background: #121828; color: var(--text); }
    transition. Animations fire on class-add
    and are NOT affected by display:none timing.
    JS sets --bar-target CSS custom property to
-   the score value, then adds .bar-animate class.
-   The @keyframes reads the custom property and
-   animates from 0% to that value.
-   Works 100% regardless of parent display state.
+   .results uses opacity transition, so bar is always in layout.
+   CSS width transition fires reliably with no JS timing needed.
    ══════════════════════════════════════════ */
 .risk-bar-fill {
   height: 100%;
   border-radius: 4px;
   width: 0%;
+  transition: width 0.9s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 
