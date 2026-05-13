@@ -305,8 +305,8 @@ select option { background: #121828; color: var(--text); }
    transition. Animations fire on class-add
    and are NOT affected by display:none timing.
    JS sets --bar-target CSS custom property to
-   .results uses opacity transition, so bar is always in layout.
-   CSS width transition fires reliably with no JS timing needed.
+   .results uses opacity/visibility transition — bar always in layout.
+   JS clears inline style + setTimeout(50) = reliable CSS transition.
    ══════════════════════════════════════════ */
 .risk-bar-fill {
   height: 100%;
