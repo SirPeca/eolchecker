@@ -863,7 +863,7 @@ export async function onRequest(context) {
       summary,
       suggestion,
       tactical:    buildTacticalAnalysis(tech, version, sorted, eolData, risk, lang),
-      meta:        { ms, version:'16.0.0', sources }
+      meta:        { ms, version:'17.0.0', sources }
     };
 
     await setCached(env, cacheKey, payload);
