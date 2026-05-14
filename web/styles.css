@@ -234,12 +234,12 @@ select option { background: #121828; color: var(--text); }
    The bar's CSS transition now fires reliably. */
 .results {
   opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.3s ease, visibility 0.3s ease;
+  pointer-events: none;
 }
 .results.visible {
   opacity: 1;
-  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.3s ease;
 }
 
 @keyframes fadeIn {
